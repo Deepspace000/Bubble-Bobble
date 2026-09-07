@@ -18,6 +18,11 @@ Two players (co-op, both must be picked on the title screen):
 | Bub (green, 1UP) | A / D, S down | Space or W | E |
 | Bob (blue, 2UP) | arrow keys | Up or Right Shift | Right Ctrl, `/` or `.` |
 
+On a phone or tablet (iOS Safari included) on-screen controls appear automatically: a left / right / down pad on the
+left, BUBBLE and JUMP on the right, and a pill in the top corner that pauses (or switches 1P/2P on the title screen).
+Tap JUMP on the title screen to start; the arrows pick the starting level there. Press T on a keyboard to show or hide
+the overlay. Adding the page to the iOS home screen runs it full screen.
+
 Gamepads (standard mapping) also work: stick or d-pad moves, A jumps, X (or B/Y/bumper/trigger) blows a bubble, Start pauses.
 With one player any pad plays. With two players the first pad is Bob and a second pad is Bub, so "joypad + WASD" is
 the natural two-player setup.
