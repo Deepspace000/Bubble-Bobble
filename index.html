@@ -615,12 +615,12 @@ window.addEventListener('resize',fitCanvas); if(window.visualViewport) window.vi
 // ===================== sprites =====================
 const sprites={}; let spritesLeft=0, ready=false;
 function sliceFrames(img,n){
-  const L=[],R=[];
+  const L=[],R=[], fh=img.height, fw=Math.round(img.width/n);   // frames are as tall as the sheet: 16 for monsters, 32 for giants, 64 for Super Drunk
   for(let i=0;i<n;i++){
-    const a=document.createElement('canvas'); a.width=16; a.height=16;
-    a.getContext('2d').drawImage(img,i*16,0,16,16,0,0,16,16); L.push(a);
-    const b=document.createElement('canvas'); b.width=16; b.height=16;
-    const g=b.getContext('2d'); g.translate(16,0); g.scale(-1,1); g.drawImage(img,i*16,0,16,16,0,0,16,16); R.push(b);
+    const a=document.createElement('canvas'); a.width=fw; a.height=fh;
+    a.getContext('2d').drawImage(img,i*fw,0,fw,fh,0,0,fw,fh); L.push(a);
+    const b=document.createElement('canvas'); b.width=fw; b.height=fh;
+    const g=b.getContext('2d'); g.translate(fw,0); g.scale(-1,1); g.drawImage(img,i*fw,0,fw,fh,0,0,fw,fh); R.push(b);
   }
   return {L,R};
 }
@@ -1038,7 +1038,7 @@ class Player{
     if(this.state==='dying'){
       this.timer--; this.anim++;
       if(this.timer>60){ this.vy+=0.08; this.y+=this.vy; this.x+=this.vx; }
-      if(this.timer<=0){ if(this.lives>0||INFINITE_LIVES){ this.reset(); this.clearPowers(); } else { this.state='dead'; state='gameover'; } }
+      if(this.timer<=0){ if(this.lives>0||INFINITE_LIVES){ this.reset(); } else { this.state='dead'; state='gameover'; } }
       return;
     }
     const inp=readInput(this), left=inp.left, right=inp.right;
@@ -1072,7 +1072,7 @@ class Player{
       else this.heatT=Math.max(0,this.heatT-3); }
     if(this.fireCd>0) this.fireCd--;
     // E: one bubble per press. Autofire (toggled with F): Bub keeps blowing bubbles on his own
-    const cdMax=this.hasCandy('orange')? Math.ceil(FIRE_COOLDOWN/2) : FIRE_COOLDOWN;
+    const cdMax=this.hasCandy('orange')? 5 : FIRE_COOLDOWN;
     if((inp.fireP && this.fireCd<=cdMax-4) || (autofire && this.fireCd<=0)){ this.fireCd=cdMax; this.blowT=12;
       if(this.fireballs>0||this.fireballRounds>0){ shootFireball(this); if(this.fireballs>0) this.fireballs--; } else spawnBubble(this);
       if(this.hasRing('ruby')) this.score+=100; }
@@ -1291,8 +1291,8 @@ function drawShots(){
 
 // ===================== bubbles =====================
 function spawnBubble(p){
-  const b={x:p.x+p.facing*9,y:p.y-9,r:3,vx:p.facing*BUB_SPEED*(p.hasCandy('blue')?1.6:1),vy:0,phase:'shoot',age:0,owner:p,enemy:null,trapT:0,
-    popping:false,popDelay:0,popper:null,chain:null,seed:Math.random()*100,atTop:false,squash:0,slideDir:0,blockedUp:false,decay:p.hasCandy('pink')?0.97:BUB_DECAY,thunder:thunderMode,dir:p.facing};
+  const b={x:p.x+p.facing*9,y:p.y-9,r:3,vx:p.facing*BUB_SPEED*(p.hasCandy('blue')?1.9:1),vy:0,phase:'shoot',age:0,owner:p,enemy:null,trapT:0,
+    popping:false,popDelay:0,popper:null,chain:null,seed:Math.random()*100,atTop:false,squash:0,slideDir:0,blockedUp:false,decay:p.hasCandy('pink')?0.978:BUB_DECAY,thunder:thunderMode,dir:p.facing};
   bubbles.push(b); stats.blown++; S.blown++;
   if(bubbles.length>MAX_BUBBLES){ const old=bubbles.find(o=>!o.popping&&!o.enemy); if(old) startPop(old,null,false); }
   SFX.blow();
@@ -1409,11 +1409,17 @@ function doPop(b){
     for(const o of bubbles){ if(o.popping) continue; const d=Math.hypot(o.x-b.x,o.y-b.y); if(d<o.r+b.r+2){ o.popping=true; o.popDelay=3; o.chain=b.chain; o.popper=b.popper; o.chainable=true; } }
   }
 }
+let combo=0, comboFrame=-999, bigDropped=false;
 function killEnemy(e,chain,popper,b){
   e.trapped=false; e.state='dead';
   const i=enemies.indexOf(e); if(i>=0) enemies.splice(i,1);
   chain.kills++;
-  const def=pickFood(chain.kills);
+  // combo: kills within 90 frames of each other stack up, wherever in the level they happen
+  combo = (frameCount-comboFrame<=90) ? combo+1 : 1; comboFrame=frameCount;
+  const n=Math.max(chain.kills,combo);
+  if(combo>=2) addPopup(b.x,b.y-18,'x'+combo+'!',combo>=4?'#ffe040':'#ffffff');
+  if(combo>=4 && !bigDropped && !level.def.bonus){ bigDropped=true; const keys=Object.keys(BIG_ITEMS); spawnBig(BIG_ITEMS[keys[Math.floor(Math.random()*keys.length)]]); }
+  const def=pickFood(n);
   const dir= popper? sgn(b.x-popper.x)||1 : (Math.random()<0.5?-1:1);
   fruits.push({x:b.x,y:b.y+6,w:10,h:12,vx:dir*1.1,vy:-2.4,def,value:def.value,age:0,dead:false,onGround:false,hitWall:false,bounces:0,fromEnemy:true});
   if(popper) popper.score+=100;
@@ -1686,7 +1692,7 @@ function spawnBig(def){
 }
 function updateItems(){
   itemTimer--;
-  if(itemQueue.length && itemTimer<=0 && !items.some(i=>!i.big) && !bonusActive){ spawnItem(itemQueue.shift()); itemTimer= crystalBallT>0? 60 : 300; }
+  if(itemQueue.length && itemTimer<=0 && items.filter(i=>!i.big).length<2 && !bonusActive){ spawnItem(itemQueue.shift()); itemTimer= crystalBallT>0? 60 : 240; }
   for(const it of items){
     it.age++; it.life--;
     if(it.big){ const rest=(LH-1)*TILE-it.size/2; if(it.y<rest){ it.y=Math.min(rest,it.y+it.vy); }
@@ -1709,10 +1715,10 @@ function onFoodCollected(f,p){
 function applyItem(id,p){
   const all=()=>players;
   switch(id){
-    case 'candyPink': p.candy.pink=true; S.candyPink++; break;
-    case 'candyBlue': p.candy.blue=true; S.candyBlue++; break;
-    case 'candyOrange': p.candy.orange=true; S.candyOrange++; break;
-    case 'shoes': p.shoes=true; break;
+    case 'candyPink': p.candy.pink=true; S.candyPink++; banner={text:'PINK CANDY: LONG RANGE BUBBLES',t:120}; break;
+    case 'candyBlue': p.candy.blue=true; S.candyBlue++; banner={text:'BLUE CANDY: FAST BUBBLES',t:120}; break;
+    case 'candyOrange': p.candy.orange=true; S.candyOrange++; banner={text:'ORANGE CANDY: RAPID FIRE',t:120}; break;
+    case 'shoes': p.shoes=true; banner={text:'SHOES: SPEED UP',t:120}; break;
     case 'clock': freezeT=480; S.clocks++; banner={text:'TIME STOPS!',t:90}; break;
     case 'dynamite': killAll('explosion'); break;
     case 'parasolO': skipRounds(3); S.parasols++; break;
@@ -1724,16 +1730,16 @@ function applyItem(id,p){
     case 'holyY': startBonusFill(BONUS_ITEMS.rainbow); break;
     case 'holyP': startBonusFill(BONUS_ITEMS.noteBlue); break;
     case 'heart': heartT=600; for(const q of all()) q.inv=Math.max(q.inv,600); banner={text:'INVINCIBLE!',t:90}; break;
-    case 'ringCrystal': p.rings.crystal=true; break;
-    case 'ringAmethyst': p.rings.amethyst=true; break;
-    case 'ringRuby': p.rings.ruby=true; break;
+    case 'ringCrystal': p.rings.crystal=true; banner={text:'CRYSTAL RING: 10 PTS A STEP',t:120}; break;
+    case 'ringAmethyst': p.rings.amethyst=true; banner={text:'AMETHYST RING: 500 PTS A JUMP',t:120}; break;
+    case 'ringRuby': p.rings.ruby=true; banner={text:'RUBY RING: 100 PTS A BUBBLE',t:120}; break;
     case 'crossWater': S.crossWater++; killAll('flood'); break;
     case 'crossThunder': S.crossThunder++; killAll('lightning'); break;
     case 'crossFire': p.fireballs=16; banner={text:'FIRE BREATH!',t:90}; break;
-    case 'lampBlue': p.stageRings=true; break;
-    case 'lampRed': p.stageRings=true; p.stageCandies=true; break;
+    case 'lampBlue': p.stageRings=true; banner={text:'BLUE LAMP: ALL RINGS THIS ROUND',t:120}; break;
+    case 'lampRed': p.stageRings=true; p.stageCandies=true; banner={text:'RED LAMP: RINGS AND CANDIES THIS ROUND',t:120}; break;
     case 'lampPurple': S.purpleLamps++; killAll('holy'); break;
-    case 'lampYellow': p.stageCandies=true; break;
+    case 'lampYellow': p.stageCandies=true; banner={text:'YELLOW LAMP: ALL CANDIES THIS ROUND',t:120}; break;
     case 'book': S.books++; killAll('quake'); break;
     case 'tiara': killAll('stars'); break;
     case 'fireNecklace': nextExtend=10; banner={text:'EXTEND BUBBLES NEXT ROUND!',t:120}; break;
@@ -1922,7 +1928,7 @@ function startRound(customDef){
   for(const p of players) p.reset();
   camSnap=true; updateCamera();
   // items and effects for the new round
-  items=[]; fx=[]; floods=[]; flames=[]; bolts=[]; fireballs=[]; energyBalls=[]; skyfall=null; killQueue=[]; freezeT=0; heartT=0; roundT=0; hurried=false; quakeT=0; itemTimer=150; specialBubbleT=360;
+  items=[]; fx=[]; floods=[]; flames=[]; bolts=[]; fireballs=[]; energyBalls=[]; skyfall=null; killQueue=[]; freezeT=0; heartT=0; roundT=0; hurried=false; quakeT=0; itemTimer=150; specialBubbleT=360; combo=0; comboFrame=-999; bigDropped=false;
   for(const p of players){ p.stageRings=false; p.stageCandies=false; if(!customDef && p.fireballRounds>0) p.fireballRounds--; }
   if(!customDef){ S.crownPrev=S.crownThis; S.crownThis=false; P.levelsBegun++; if(crystalBallT>0) crystalBallT--; saveP(); }
   if(!level.def.bonus){ checkConditions(true);
