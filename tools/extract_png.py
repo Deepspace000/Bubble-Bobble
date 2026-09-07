@@ -13,7 +13,7 @@ mask = np.abs(a - BG).sum(2) > 0
 
 BANDS = {'bub1':(16,32),'bub2':(36,52),'bub3':(58,85),'zen':(245,261),'mighta1':(278,294),'mighta2':(299,315),
          'monsta':(332,349),'pulpul':(363,379),'banebou':(393,410),'invader':(424,441),'hidegons1':(455,471),
-         'hidegons2':(476,492),'drunk1':(507,523),'drunk2':(529,545)}
+         'hidegons2':(476,492),'drunk1':(507,523),'drunk2':(529,545),'sd1':(598,662),'sd2':(667,735),'giants':(752,784)}
 
 def boxes(band):
     y0, y1 = BANDS[band]
@@ -60,12 +60,22 @@ GROUPS = {
     'hidegons_walk': R('hidegons1',0,4),'hidegons_angry': R('hidegons1',6,10),
     'drunk_walk': R('drunk1',0,4),     'drunk_angry': R('drunk1',10,14),   'drunk_throw': R('drunk1',4,6), 'drunk_athrow': R('drunk1',14,16),
     'fx_fire': R('hidegons2',0,3),     'fx_bottle': R('drunk2',0,2),
+    # bosses: Super Drunk (64x64) and the giant monsters (32x32)
+    'superdrunk_walk': R('sd1',0,4), 'superdrunk_angry': R('sd1',4,6), 'superdrunk_hurt': R('sd2',0,4),
+    'giant_zen': R('giants',0,4), 'giant_pulpul': R('giants',4,8), 'giant_banebou': R('giants',8,12),
+    'giant_monsta': R('giants',12,14), 'giant_hidegons': R('giants',14,16), 'giant_mighta': R('giants',16,18),
 }
+SIZES={'superdrunk_':(64,64),'giant_':(32,32)}
+def size_for(name):
+    for k,v in SIZES.items():
+        if name.startswith(k): return v
+    return (16,16)
 
 result = {}
 previews = []
 for name, frames in GROUPS.items():
-    arrs = [cell(b, i) for (b, i) in frames]
+    w, h = size_for(name)
+    arrs = [cell(b, i, w, h) for (b, i) in frames]
     img = Image.fromarray(strip(arrs), 'RGBA')
     buf = io.BytesIO(); img.save(buf, 'PNG', optimize=True)
     result[name] = {'frames': len(arrs), 'data': 'data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode()}
