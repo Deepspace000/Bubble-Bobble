@@ -8,7 +8,8 @@ and clear 100 rounds of platforms, shafts, caves, labyrinths, waterfalls, forest
 ## Controls
 
 One player: A/D move, Space (or W) jump, hold jump to bounce on bubbles, S+Space drop through a platform, E blow a bubble.
-F toggles autofire, M mutes, P pauses. On the title screen W/S picks a starting level and A/D switches between 1 and 2 players.
+F toggles autofire, M mutes, P pauses. On the title screen W/S picks a starting level, A/D switches between 1 and 2 players,
+and N lets you type a three-letter name (some secret items only appear for certain names).
 
 Two players (co-op, both must be picked on the title screen):
 
@@ -35,6 +36,24 @@ Rounds 73-100 add five new worlds, and keep the narrow half-width shafts going a
 - **Ice** - slippery momentum: you slide when you stop and skid when you turn. Snow falls.
 
 Round 100, THE FURNACE, is a narrow burning snake shaft with the final Super Drunk boss.
+
+## Items
+
+The full arcade item table is in. Popped monsters drop food that gets richer as the rounds go on (green pepper to gold
+crowns); popping several at once hands out the chain bonuses (tangerine, peach, watermelon, pineapple, grapes and the
+diamonds). Bosses drop crowns.
+
+Special bubbles drift up from the floor: **water** (pop it and a flood sweeps monsters away), **fire** (flames spread
+along the platform), **thunder** (a lightning bolt shoots off) and **EXTEND** letters (collect all six for a bonus).
+Take too long and HURRY UP! makes the monsters angry.
+
+All 53 special items appear under their arcade conditions, with their arcade effects: candies and shoes upgrade Bub,
+the clock stops time, dynamite / crosses / lamps / book / tiara / fork / knife / cola clear the screen in different ways,
+parasols skip rounds, holy waters and the crayon turn the level into a bonus stage, rings pay you for walking,
+jumping and blowing, the necklaces give extend bubbles or an energy ball, the doors lead to a secret room or warp to
+round 70, Takoppachi / the flamingo / chuhai / treasure boxes / magic canes turn leftover bubbles into items when the
+round is won, and the treasure boxes and canes also summon a HUGE version of that item (about ten Bubs tall, worth up
+to 80,000). The Drug of Thunder waits on round 100; the Special Bubble is a 1 in 4096 chance.
 
 `tools/` holds the sprite-extraction and build scripts (see `tools/README.txt`). Character sprites are from the original game and
 belong to Taito; this is a non-commercial fan prototype.

@@ -847,6 +847,9 @@ const anyDown=l=>l.some(c=>keys[c]); const anyPressed=l=>l.some(c=>pressed[c]);
 window.addEventListener('keydown',e=>{
   if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight'].includes(e.code)) e.preventDefault();
   initAudio();
+  if(nameEdit){ e.preventDefault(); if(e.code==='Enter'||e.code==='Escape'){ nameEdit=false; if(nameBuf.length){ P.name=(nameBuf+'...').slice(0,3); saveP(); } }
+    else if(e.code==='Backspace') nameBuf=nameBuf.slice(0,-1); else if(e.key && e.key.length===1 && /[A-Za-z0-9.!?]/.test(e.key) && nameBuf.length<3) nameBuf+=e.key.toUpperCase(); return; }
+  if(state==='title' && e.code==='KeyN'){ nameEdit=true; nameBuf=''; return; }
   if(!keys[e.code]) pressed[e.code]=true;
   keys[e.code]=true;
   if(e.code==='KeyM') muted=!muted;
@@ -961,7 +964,10 @@ function nearestPlayer(x,y){ let best=null, bd=Infinity; for(const p of players)
 let stats={blown:0,popped:0,bounces:0,biggestChain:0};
 
 class Player{
-  constructor(idx=0){ this.idx=idx; this.spr= idx? 'bob':'bub'; this.w=10; this.h=15; this.score=0; this.lives=3; this.reset(); }
+  constructor(idx=0){ this.idx=idx; this.spr= idx? 'bob':'bub'; this.w=10; this.h=15; this.score=0; this.lives=3; this.clearPowers(); this.fireballRounds=0; this.extend={}; this.stageRings=false; this.stageCandies=false; this.reset(); }
+  clearPowers(){ this.candy={}; this.shoes=false; this.rings={}; this.fireballs=0; this.walkAcc=0; }
+  hasCandy(k){ return !!(this.candy[k]||this.stageCandies); }
+  hasRing(k){ return !!(this.rings[k]||this.stageRings); }
   reset(){ this.x=level.spawn.x+(this.idx?3:-3); this.y=level.spawn.y; this.vx=0; this.vy=0; this.facing=1; this.onGround=false; if(numPlayers===1) camSnap=true;
     this.state='alive'; this.timer=0; this.inv=120; this.fireCd=0; this.anim=0; this.blowT=0; this.jumpHeld=false; this.fallAnim=0; this.idleT=0; this.mom=0; this.heatT=0; this.stepper=true; }
   update(){
@@ -969,12 +975,13 @@ class Player{
     if(this.state==='dying'){
       this.timer--; this.anim++;
       if(this.timer>60){ this.vy+=0.08; this.y+=this.vy; this.x+=this.vx; }
-      if(this.timer<=0){ if(this.lives>0||INFINITE_LIVES) this.reset(); else { this.state='dead'; state='gameover'; } }
+      if(this.timer<=0){ if(this.lives>0||INFINITE_LIVES){ this.reset(); this.clearPowers(); } else { this.state='dead'; state='gameover'; } }
       return;
     }
     const inp=readInput(this), left=inp.left, right=inp.right;
     this.jumpHeld=inp.jump;
-    const want=(left&&!right ? -MOVE : right&&!left ? MOVE : 0) * (this.inWater?0.65:1);
+    const mv=MOVE*(this.shoes?1.5:1);
+    const want=(left&&!right ? -mv : right&&!left ? mv : 0) * (this.inWater?0.65:1);
     // ice: momentum builds and bleeds off slowly, so Bub slides. Wind gusts shove him, mostly in the air.
     if(level.def.ice){ const k=this.onGround?0.07:0.15; this.mom+=(want-this.mom)*k; if(want===0&&Math.abs(this.mom)<0.02) this.mom=0; this.vx=this.mom; }
     else { this.vx=want; this.mom=want; }
@@ -985,12 +992,13 @@ class Player{
     if(inp.jumpP){
       // down + jump on a thin platform: drop through it to the level below
       if(this.onGround && inp.down && this.dropThrough()){ /* fell through the platform */ }
-      else if(this.onGround){ this.vy=-JUMP_V; this.onGround=false; SFX.jump(); }
+      else if(this.onGround){ this.vy=-JUMP_V; this.onGround=false; SFX.jump(); S.jumps++; if(this.hasRing('amethyst')){ this.score+=500; addPopup(this.x,this.y-20,'500','#d090ff'); } }
       else if(this.inWater){ const atSurface = tileAt(col(this.x),row(this.y-this.h-1))!=='w'; this.vy = atSurface? -JUMP_V*0.9 : -1.7; SFX.jump(); }
     }
     this.hitWall=false;
     physicsStep(this);
     if(this.hitWall) this.mom=0;
+    if(this.onGround && this.vx!==0){ S.walked+=Math.abs(this.vx); this.walkAcc+=Math.abs(this.vx); if(this.walkAcc>=8){ this.walkAcc-=8; if(this.hasRing('crystal')) this.score+=10; } }
     if(!this.onGround && this.vy>0) this.fallAnim++; else this.fallAnim=0;
     // lava is instant; a hot platform burns after about a second of standing on it (embers warn you first)
     { const ft=tileAt(col(this.x),row(this.y-1)), mt=tileAt(col(this.x),row(this.y-this.h/2));
@@ -1001,18 +1009,21 @@ class Player{
       else this.heatT=Math.max(0,this.heatT-3); }
     if(this.fireCd>0) this.fireCd--;
     // E: one bubble per press. Autofire (toggled with F): Bub keeps blowing bubbles on his own
-    if((inp.fireP && this.fireCd<=FIRE_COOLDOWN-4) || (autofire && this.fireCd<=0)){ this.fireCd=FIRE_COOLDOWN; this.blowT=12; spawnBubble(this); }
+    const cdMax=this.hasCandy('orange')? Math.ceil(FIRE_COOLDOWN/2) : FIRE_COOLDOWN;
+    if((inp.fireP && this.fireCd<=cdMax-4) || (autofire && this.fireCd<=0)){ this.fireCd=cdMax; this.blowT=12;
+      if(this.fireballs>0||this.fireballRounds>0){ shootFireball(this); if(this.fireballs>0) this.fireballs--; } else spawnBubble(this);
+      if(this.hasRing('ruby')) this.score+=100; }
     if(this.blowT>0) this.blowT--;
     if(this.inv>0) this.inv--;
-    if(this.wrapped){ this.wrapped=false; if(numPlayers===1) camSnap=true; }
+    if(this.wrapped){ this.wrapped=false; S.falls++; if(numPlayers===1) camSnap=true; }
     for(const k of level.keys){ if(!k.taken && Math.abs(k.x-this.x)<9 && k.y>this.y-this.h-4 && k.y-8<this.y+4){ k.taken=true; unlockDoors(k.id,this); } }
     if(exitOpen && state==='playing' && this.onGround){ const d=level.exit; if(Math.abs(this.x-(d.x+8))<5 && this.y>=d.y+8 && this.y<=d.y+17) enterExit(this); }
     touchBubbles(this);
     if(this.state!=='alive') return;
-    if(this.inv<=0){
-      for(const e of enemies){ if(e.state!=='alive'||e.trapped) continue; if(rectOverlap(this,e,3)){ this.die(); break; } }
-    }
-    for(const f of fruits){ if(!f.dead && f.age>20 && rectOverlap(this,f,0)){ f.dead=true; this.score+=f.value; addPopup(f.x,f.y-10,String(f.value),'#ffffff'); SFX.fruit(); } }
+    for(const e of enemies){ if(e.state!=='alive'||e.trapped) continue; if(!rectOverlap(this,e,3)) continue;
+      if(heartT>0){ if(!e.boss) killWith(e,'heart',this,{count:0,kills:0}); }
+      else if(this.inv<=0){ this.die(); break; } }
+    for(const f of fruits){ if(!f.dead && f.age>20 && rectOverlap(this,f,0)){ f.dead=true; this.score+=f.value; addPopup(f.x,f.y-10,String(f.value),'#ffffff'); SFX.fruit(); onFoodCollected(f,this); } }
   }
   // S + jump: fall through whatever Bub stands on (slabs up to 2 tiles thick with room beneath; never the level's outer floor)
   dropThrough(){
@@ -1024,7 +1035,7 @@ class Player{
     for(let i=0;i<6;i++) particles.push({type:'dot',x:this.x+rnd(-5,5),y:(r0+thick)*TILE+2,vx:rnd(-0.6,0.6),vy:rnd(0.2,1),life:16,max:16,color:'#c0c0c0'});
     SFX.spawn(); return true;
   }
-  die(){ this.state='dying'; this.timer=130; this.vy=-2.2; this.vx=-this.facing*0.4; if(!INFINITE_LIVES) this.lives--; this.anim=0; SFX.death(); }
+  die(){ S.deaths++; this.state='dying'; this.timer=130; this.vy=-2.2; this.vx=-this.facing*0.4; if(!INFINITE_LIVES) this.lives--; this.anim=0; SFX.death(); }
   burn(){ for(let i=0;i<14;i++) particles.push({type:'dot',x:this.x+rnd(-5,5),y:this.y-rnd(0,14),vx:rnd(-0.8,0.8),vy:rnd(-2,-0.5),life:24,max:24,color:i%2?'#ffd040':'#ff5010'}); this.heatT=0; this.mom=0; this.die(); }
   draw(){
     if(this.state==='dead') return;
@@ -1069,6 +1080,7 @@ class Enemy{
   }
   get spd(){ return this.speed*(this.angry?1.7:1); }
   update(){
+    if(freezeT>0||heartT>0) return;
     if(this.state==='spawning'){ this.timer--; if(this.timer<=0) this.state='alive'; return; }
     if(this.state!=='alive'||this.trapped) return;
     this.anim++; if(this.throwT>0) this.throwT--;
@@ -1161,7 +1173,7 @@ class Boss extends Enemy{
       this.dieT--;
       if(this.dieT%6===0){ particles.push({type:'ring',x:this.x+rnd(-this.w/2,this.w/2),y:this.y-rnd(0,this.h),r:3,life:12,max:12,color:'#ffffff'}); SFX.pop(this.dieT>>3); }
       if(this.dieT<=0){ const i=enemies.indexOf(this); if(i>=0) enemies.splice(i,1);
-        for(let k=0;k<5;k++){ const def=FRUIT_DEFS[k%FRUIT_DEFS.length]; fruits.push({x:this.x+rnd(-20,20),y:this.y-20,w:10,h:12,vx:rnd(-1.5,1.5),vy:rnd(-3,-1.5),def,value:5000,age:0,dead:false,onGround:false,hitWall:false}); }
+        { const def=CROWN_ITEMS[Math.min(5,Math.floor(Math.max(0,round-5)/16))]; for(let k=0;k<5;k++) fruits.push({x:this.x+rnd(-20,20),y:this.y-20,w:10,h:12,vx:rnd(-1.5,1.5),vy:rnd(-3,-1.5),def,value:def.value,age:0,dead:false,onGround:false,hitWall:false,fromEnemy:true}); }
         addPopup(this.x,this.y-this.h-6,'BOSS DOWN!','#f8e030'); SFX.clear(); }
       return;
     }
@@ -1186,7 +1198,7 @@ function spawnBoss(){
   banner={text:'WARNING!  BOSS!',t:150}; SFX.escape();
 }
 function hitBossCheck(b){
-  if(b.enemy) return false;
+  if(b.enemy||b.special) return false;
   for(const e of enemies){ if(!e.boss||e.state!=='alive') continue;
     if(circleRect({x:b.x,y:b.y,r:b.r+1},e,0)){ e.hit(b); const i=bubbles.indexOf(b); if(i>=0) bubbles.splice(i,1); return true; } }
   return false;
@@ -1216,15 +1228,15 @@ function drawShots(){
 
 // ===================== bubbles =====================
 function spawnBubble(p){
-  const b={x:p.x+p.facing*9,y:p.y-9,r:3,vx:p.facing*BUB_SPEED,vy:0,phase:'shoot',age:0,owner:p,enemy:null,trapT:0,
-    popping:false,popDelay:0,popper:null,chain:null,seed:Math.random()*100,atTop:false,squash:0,slideDir:0,blockedUp:false};
-  bubbles.push(b); stats.blown++;
+  const b={x:p.x+p.facing*9,y:p.y-9,r:3,vx:p.facing*BUB_SPEED*(p.hasCandy('blue')?1.6:1),vy:0,phase:'shoot',age:0,owner:p,enemy:null,trapT:0,
+    popping:false,popDelay:0,popper:null,chain:null,seed:Math.random()*100,atTop:false,squash:0,slideDir:0,blockedUp:false,decay:p.hasCandy('pink')?0.97:BUB_DECAY,thunder:thunderMode,dir:p.facing};
+  bubbles.push(b); stats.blown++; S.blown++;
   if(bubbles.length>MAX_BUBBLES){ const old=bubbles.find(o=>!o.popping&&!o.enemy); if(old) startPop(old,null,false); }
   SFX.blow();
 }
 // a fresh bubble captures any enemy it touches (checked at the old and new position so fast shots can't skip past)
 function tryTrap(b,px){
-  if(b.enemy) return;
+  if(b.enemy||b.special) return;
   const probe={x:px,y:b.y,r:Math.max(b.r,6)+1};
   for(const e of enemies){
     if(e.state!=='alive'||e.trapped||e.boss) continue;
@@ -1264,14 +1276,14 @@ function updateBubble(b){
   if(b.phase==='shoot'){
     b.r=Math.min(BUB_R,b.r+1.5);
     const px=b.x;
-    b.x+=b.vx; b.vx*=BUB_DECAY;
+    b.x+=b.vx; b.vx*=(b.decay||BUB_DECAY);
     const before=b.x; bubbleTiles(b);
     if(b.x!==before || Math.abs(b.vx)<0.25){ b.phase='float'; b.vx*=0.3; }
     if(hitBossCheck(b)) return;
     tryTrap(b,px);
   } else {
     if(b.age<BUB_ACTIVE && !b.enemy){ if(hitBossCheck(b)) return; tryTrap(b,b.x); }
-    const targetVy = b.enemy? -0.22 : -0.3;
+    const targetVy = b.enemy? -0.22 : b.special? -0.12 : -0.3;
     const bt=tileAt(col(b.x),row(b.y)); if(bt==='F') b.vy=Math.max(b.vy-0.3,-2.4); else if(bt==='f') b.vy=Math.min(b.vy+0.2,1.6);
     if(bt==='L'||tileAt(col(b.x),row(b.y+b.r+2))==='L') b.vy=Math.max(b.vy-0.35,-2.2);   // heat rising off lava
     b.vx+=windNow()*0.05;
@@ -1298,7 +1310,7 @@ function updateBubble(b){
     } else { b.slideDir=0; b.atTop=false; }
     b.vx*=0.96;
     if(b.enemy){ b.trapT++; if(b.trapT>BUB_ESCAPE) releaseEnemy(b); }
-    else if(b.age>BUB_LIFE) startPop(b,null,false);
+    else if(b.age>(b.special?BUB_LIFE*3:BUB_LIFE)) startPop(b,null,false);
   }
   if(b.enemy){ b.enemy.x=b.x; b.enemy.y=b.y+8; }
 }
@@ -1325,7 +1337,8 @@ function startPop(b,popper,chain){
 function doPop(b){
   const i=bubbles.indexOf(b); if(i>=0) bubbles.splice(i,1);
   spawnPopParticles(b, b.owner? '#a0ffa0':'#ffffff');
-  SFX.pop(b.chain.count); b.chain.count++; stats.popped++;
+  SFX.pop(b.chain.count); b.chain.count++; stats.popped++; if(S) S.popped++;
+  if(b.thunder && !b.enemy && !b.special) fireBolt(b.x,b.y,b.dir||1);
   if(b.chain.count>stats.biggestChain) stats.biggestChain=b.chain.count;
   if(b.enemy) killEnemy(b.enemy,b.chain,b.popper,b);
   else if(b.popper) b.popper.score+=10;
@@ -1337,9 +1350,9 @@ function killEnemy(e,chain,popper,b){
   e.trapped=false; e.state='dead';
   const i=enemies.indexOf(e); if(i>=0) enemies.splice(i,1);
   chain.kills++;
-  const def=FRUIT_DEFS[Math.min(chain.kills-1,FRUIT_DEFS.length-1)];
+  const def=pickFood(chain.kills);
   const dir= popper? sgn(b.x-popper.x)||1 : (Math.random()<0.5?-1:1);
-  fruits.push({x:b.x,y:b.y+6,w:10,h:12,vx:dir*1.1,vy:-2.4,def,value:def.value,age:0,dead:false,onGround:false,hitWall:false,bounces:0});
+  fruits.push({x:b.x,y:b.y+6,w:10,h:12,vx:dir*1.1,vy:-2.4,def,value:def.value,age:0,dead:false,onGround:false,hitWall:false,bounces:0,fromEnemy:true});
   if(popper) popper.score+=100;
   SFX.kill();
 }
@@ -1348,6 +1361,7 @@ function touchBubbles(p){
     if(b.popping) continue;
     if(b.owner===p && b.age<14) continue;
     if(!circleRect(b,p,1.5)) continue;
+    if(b.special){ popSpecial(b,p); continue; }
     if(p.jumpHeld){
       if(p.vy>0 && p.y<=b.y+2){
         p.vy=-BOUNCE_V; p.onGround=false; p.y=Math.min(p.y,b.y-b.r+4);
@@ -1400,13 +1414,439 @@ function updateParticles(){
 }
 function addPopup(x,y,text,color){ popups.push({x,y,text,color,life:60}); }
 
+// ===================== items: food, chain bonuses, special items, special bubbles =====================
+// Values follow the arcade item table: foods advance with the round, chain pops hand out the bonus fruits and diamonds,
+// bubbles left over when a round is won can turn into 700-point items, bonus stages fill with 500-point ones, and the
+// "big" versions are huge (about ten Bubs tall) and worth a fortune. Every special item has a function and a condition.
+function makeIcon(shape,a,b,c){
+  const cv=document.createElement('canvas'); cv.width=12; cv.height=12; const g=cv.getContext('2d');
+  b=b||'#ffffff'; c=c||'#2fa82f';
+  const R=(x,y,w,h,col)=>{ g.fillStyle=col; g.fillRect(x,y,w,h); };
+  const C=(x,y,r,col)=>{ g.fillStyle=col; g.beginPath(); g.arc(x,y,r,0,Math.PI*2); g.fill(); };
+  const E=(x,y,rx,ry,col,rot=0)=>{ g.fillStyle=col; g.beginPath(); g.ellipse(x,y,rx,ry,rot,0,Math.PI*2); g.fill(); };
+  const T=(p,col)=>{ g.fillStyle=col; g.beginPath(); g.moveTo(p[0],p[1]); for(let i=2;i<p.length;i+=2) g.lineTo(p[i],p[i+1]); g.closePath(); g.fill(); };
+  const HC=(x,y,r,col)=>{ g.fillStyle=col; g.beginPath(); g.arc(x,y,r,Math.PI,0); g.fill(); };
+  const cut=(x,y,r)=>{ g.globalCompositeOperation='destination-out'; C(x,y,r,'#000'); g.globalCompositeOperation='source-over'; };
+  switch(shape){
+    case 'round': C(6,7,4.5,a); C(4.5,5.5,1.2,b); R(5.5,1,1,3,'#5a3a1a'); E(7.5,2,2,1,c,-0.6); break;
+    case 'pepper': C(4,7,3,a); C(8,7,3,a); C(6,5,3,a); C(4.5,5,1,b); R(5.5,1,1,3,c); break;
+    case 'oval': E(6,7,3,5,a); C(5,5,1,b); R(5,1,2,2,c); break;
+    case 'long': g.save(); g.translate(6,6); g.rotate(-0.8); E(0,0,2.2,5.5,a); E(-0.7,-1,0.6,2.5,b); g.restore(); C(9.5,2,1.5,c); break;
+    case 'pod': g.save(); g.translate(6,6); g.rotate(0.6); E(0,0,2.5,5.5,a); for(let i=-1;i<=1;i++) C(0,i*3,1,b); g.restore(); break;
+    case 'mushroom': C(6,5,5,a); R(1,5,10,1,a); R(4,6,4,5,b); C(4,3,1,b); C(8,4,1,b); break;
+    case 'corn': E(6,6,3,5.5,a); for(let y=2;y<11;y+=2) for(let x=4;x<9;x+=2) R(x,y,1,1,b); T([3,11,0,6,4,4],c); T([9,11,12,6,8,4],c); break;
+    case 'egg': E(6,7,5.5,4,'#ffffff'); C(6,7,2.5,a); break;
+    case 'cone': T([2,5,10,5,6,12],b); C(6,4,4,a); C(5,3,1,'#ffffff'); break;
+    case 'cup': T([2,3,10,3,8,11,4,11],b); T([3,4,9,4,7.5,9,4.5,9],a); R(7,0,1,5,c); break;
+    case 'bar': R(3,0,6,9,a); R(4,1,2,3,b); R(5.5,9,1,3,'#c8a060'); break;
+    case 'cake': T([1,11,11,11,6,2],a); T([2.5,8,9.5,8,7.5,5,4.5,5],b); C(6,2,1.5,c); break;
+    case 'burger': E(6,3,5.5,2.5,a); R(1,5,10,1.5,c); R(1,6.5,10,2,b); E(6,10,5.5,1.8,a); break;
+    case 'fries': R(2,5,8,7,b); for(let i=0;i<4;i++) R(3+i*2,1+(i%2),1.5,5,a); break;
+    case 'sausage': E(6,6,5.5,2.5,a); R(2,5,8,1,b); R(1,4,10,1,'#c89060'); break;
+    case 'pudding': T([2,11,10,11,9,4,3,4],a); T([3,4,9,4,8.5,6,3.5,6],b); C(6,3,2,'#ffffff'); break;
+    case 'chicken': E(7,5,4,4,a); R(2,8,3,3,'#ffffff'); C(2,10,1.5,'#ffffff'); C(5,3,1,b); break;
+    case 'sushi': E(6,8,5,3,'#ffffff'); E(6,5,5,2.5,a); R(2,5,8,1,b); break;
+    case 'mug': R(2,2,7,9,a); R(3,3,5,2,'#ffffff'); R(9,4,2,4,b); R(3,4,1,6,'#ffffff'); break;
+    case 'glass': T([1,1,11,1,6,7],a); R(5.5,7,1,4,b); R(3,11,6,1,b); C(9,2,1.5,c); break;
+    case 'gem': T([2,4,10,4,6,11],a); T([2,4,4,1,8,1,10,4],b); T([4,4,6,1,8,4],a); R(5,2,1,1,'#ffffff'); break;
+    case 'crystal': T([6,0,10,3,10,9,6,12,2,9,2,3],a); T([6,0,8,3,6,12,4,3],b); break;
+    case 'butterfly': E(3,5,3,4,a); E(9,5,3,4,a); E(3,9,2,2,b); E(9,9,2,2,b); R(5.5,3,1,7,'#302020'); break;
+    case 'necklace': for(let i=0;i<8;i++){ const an=i/7*Math.PI; C(6-4.5*Math.cos(an),4+4*Math.sin(an),1,b); } T([4,8,8,8,6,12],a); break;
+    case 'shell': for(let i=0;i<5;i++){ const an=Math.PI+i*Math.PI/4; T([6,10,6+6*Math.cos(an),10+6*Math.sin(an),6+6*Math.cos(an+0.6),10+6*Math.sin(an+0.6)],i%2?a:b); } break;
+    case 'bowl': T([1,5,11,5,9,11,3,11],b); E(6,5,5,2,a); R(4,3,1,1,c); R(7,2,1,2,c); break;
+    case 'crown': T([1,11,11,11,11,4,8.5,7,6,2,3.5,7,1,4],a); C(6,3,1,b); C(1.5,4,1,b); C(10.5,4,1,b); R(1,9,10,2,c); break;
+    case 'eclair': E(6,6,5.5,3,a); E(6,5,5,1.5,b); break;
+    case 'note': R(7,1,1.5,8,a); R(7,1,4,1.5,a); E(5.5,9.5,2.5,2,a); break;
+    case 'computer': R(1,1,10,8,'#8a8a98'); R(2,2,8,5,a); R(3,3,3,1,b); R(4,9,4,2,'#5a5a68'); break;
+    case 'figure': C(6,6,5,a); C(4,5,1.2,'#ffffff'); C(8,5,1.2,'#ffffff'); C(4,5,0.6,'#000'); C(8,5,0.6,'#000'); R(4,8,4,1,b); break;
+    case 'flower': for(let i=0;i<5;i++){ const an=i/5*Math.PI*2; C(6+3*Math.cos(an),6+3*Math.sin(an),2,a); } C(6,6,1.8,b); break;
+    case 'clover': C(6,3.5,2.5,a); C(3.5,7,2.5,a); C(8.5,7,2.5,a); R(5.5,7,1,5,c); break;
+    case 'rainbow': [['#ff4040',5.5],['#ffd040',4],['#40c040',2.5]].forEach(([col,r])=>{ g.strokeStyle=col; g.lineWidth=1.5; g.beginPath(); g.arc(6,10,r,Math.PI,0); g.stroke(); }); break;
+    case 'x': g.strokeStyle=a; g.lineWidth=2.5; g.beginPath(); g.moveTo(2,2); g.lineTo(10,10); g.moveTo(10,2); g.lineTo(2,10); g.stroke(); break;
+    case 'okono': C(6,6,5,a); R(2,5,8,1,b); R(3,7,6,1,b); C(6,4,1,c); break;
+    case 'candy': E(6,6,3,2.5,a); T([3,6,0,3,0,9],b); T([9,6,12,3,12,9],b); R(4,5,1,1,'#ffffff'); break;
+    case 'shoe': E(7,8,4.5,2.5,a); R(2,3,4,6,a); R(3,4,2,1,b); R(2,10,9,1.5,'#402010'); break;
+    case 'clock': C(6,6,5.5,a); C(6,6,4,'#ffffff'); R(5.5,3,1,3.5,'#000'); R(6,6,2.5,1,'#000'); break;
+    case 'dynamite': R(3,3,6,9,a); R(4,4,4,1,b); R(6,0,1,3,'#804000'); C(6.5,0.5,1,'#ffd040'); break;
+    case 'parasol': HC(6,6,5.5,a); R(5.5,6,1,6,'#804000'); R(3,5,2,1,b); R(8,4,1,1,b); break;
+    case 'bottle': R(4,0,4,3,b); E(6,8,4.5,4,a); C(5,7,1,'#ffffff'); break;
+    case 'heart': C(3.5,4,3,a); C(8.5,4,3,a); T([1,5,11,5,6,11],a); C(3,3,1,'#ffffff'); break;
+    case 'ring': g.strokeStyle=a; g.lineWidth=2; g.beginPath(); g.arc(6,7,3.5,0,Math.PI*2); g.stroke(); T([3.5,3,8.5,3,6,0],b); break;
+    case 'cross': R(5,1,2,10,a); R(1,5,10,2,a); C(6,6,1.2,b); break;
+    case 'lamp': E(6,8,5,2.5,a); R(1,8,10,1,a); T([9,6,12,4,11,8],a); R(2,6,2,1.5,a); R(4,4,4,1.5,a); C(8,4.5,0.8,'#ffe080'); break;
+    case 'book': R(1,1,10,10,a); R(3,2,7,8,'#ffffff'); R(3,3,7,1,b); R(3,5,5,1,b); R(3,7,6,1,b); break;
+    case 'tiara': T([1,10,11,10,10,5,6,2,2,5],a); C(6,3,1.3,b); C(2.5,6,1,b); C(9.5,6,1,b); break;
+    case 'fork': R(5,0,2,12,a); R(3,0,1,4,a); R(8,0,1,4,a); R(3,3,6,1,a); break;
+    case 'knife': T([5,0,8,0,8,7,5,7],'#d0d0e0'); R(5,7,3,5,a); break;
+    case 'flamingo': E(7,5,3.5,3,a); R(3,3,2,3,a); C(3,3,1.5,a); R(2,4,2,1,'#000'); R(8,8,1,4,a); R(6,8,1,4,a); break;
+    case 'cane': R(5,3,2,9,a); g.strokeStyle=a; g.lineWidth=2; g.beginPath(); g.arc(6,3,2.5,Math.PI,0); g.stroke(); C(6,3,1.5,b); break;
+    case 'box': R(1,5,10,6,a); R(1,3,10,3,b); R(5,4,2,3,'#ffe060'); R(1,7,10,1,'rgba(0,0,0,0.25)'); break;
+    case 'bell': T([2,10,10,10,9,5,6,1,3,5],a); R(1,10,10,1.5,'#000'); C(6,1,1,a); C(6,11,1,b); break;
+    case 'ball': C(6,5,4.5,a); C(4.5,3.5,1.5,'#ffffff'); T([2,11,10,11,8,9,4,9],b); break;
+    case 'crayon': g.save(); g.translate(6,6); g.rotate(0.7); R(-1.5,-5,3,9,a); T([-1.5,-5,1.5,-5,0,-8],b); g.restore(); break;
+    case 'door': R(1,1,10,11,a); R(2,2,8,9,b); C(8,7,1,'#ffe060'); break;
+    case 'bubble': C(6,6,5,a); C(4,4,1.5,'#ffffff'); g.strokeStyle=b; g.lineWidth=1; g.beginPath(); g.arc(6,6,5,0,Math.PI*2); g.stroke(); break;
+    case 'bag': E(6,8,5,4,a); R(4,2,4,3,a); R(3,4,6,1,b); C(6,8,1.5,b); break;
+    case 'doughnut': C(6,6,5,a); cut(6,6,2); C(3,4,0.7,b); C(8,3,0.7,c); C(8,8,0.7,b); break;
+    case 'cupcup': T([2,2,10,2,9,11,3,11],a); R(3,3,6,1,b); R(9,4,2,4,a); break;
+  }
+  return cv;
+}
+function itemDef(name,value,shape,a,b,c){ return {name,value,shape,a,b,c,img:makeIcon(shape,a,b,c)}; }
+const D=(r)=>itemDef(...r);
+// foods by round (first column of the table), in table order
+const FOODS=[
+ ['Green Pepper',10,'pepper','#40c040','#80ff80'],['Eggplant',20,'oval','#7030a0','#a060d0'],['Carrot',30,'long','#ff8020','#ffb060'],['Onion',40,'round','#f0e0c0','#ffffff','#a0d060'],
+ ['Red Turnip',50,'oval','#e03060','#ff80a0'],['White Turnip',60,'oval','#f0f0f0','#ffffff'],['Radish',70,'oval','#ffffff','#e0e0e0'],['Cucumber',80,'long','#30a030','#80e080'],
+ ['Field Peas',90,'pod','#40c040','#80ff80'],['Mushroom',100,'mushroom','#e04040','#f0e0c0'],['Corn',150,'corn','#ffe040','#ffb020'],['Fried Egg',200,'egg','#ffc020'],
+ ['Chestnut',250,'round','#8a5020','#c08040','#4a2810'],['Persimmon',300,'round','#ff8020','#ffb060'],['Lemon',350,'oval','#ffe040','#ffffa0'],['Tangerine',400,'round','#ff9020','#ffc060'],
+ ['Peach',450,'round','#ffb0a0','#ffe0d0'],['Banana',500,'long','#ffe040','#ffff80'],['Pear',550,'oval','#c0e060','#e0ff90'],['Watermelon',600,'round','#30a030','#60d060','#206020'],
+ ['Chocolate Ice',650,'bar','#6a3a1a','#a06030'],['Soda Pop Ice',700,'bar','#60c0ff','#a0e0ff'],['Strawberry Shaved Ice',750,'cup','#ff6080','#e0f0ff'],['Lemon Shaved Ice',800,'cup','#ffe040','#e0f0ff'],
+ ['Melon Shaved Ice',850,'cup','#80e080','#e0f0ff'],['Ujikintoki',900,'cup','#40a040','#e0d0b0'],['Soft Ice Cream',950,'cone','#ffffff','#e0a060'],['Ice Cream',1000,'cone','#ffb0c0','#e0a060'],
+ ['Doughnut',1000,'doughnut','#e0a060','#ff80c0','#ffffff'],['French Fries',1000,'fries','#ffe040','#e03030'],['Frankfurter',2000,'sausage','#d04030','#ffe060'],['Pudding',2000,'pudding','#ffd040','#8a4020'],
+ ['Hamburger',2000,'burger','#e0a050','#8a4020','#40c040'],['Shortcake',2000,'cake','#fff0d0','#ff8090','#ff3050'],['Chocolate Cake',3000,'cake','#6a3a1a','#a06030','#ff3050'],['Fried Chicken',3000,'chicken','#d08030','#ffe0a0'],
+ ['Cocktail',3000,'glass','#ff6080','#d0d0e0','#40c040'],['Egg Sushi',3000,'sushi','#ffe040','#204020'],['Shrimp Sushi',4000,'sushi','#ff8060','#ffffff'],['Tuna Sushi',4000,'sushi','#e03050','#ff90a0'],
+ ['Eel Sushi',4000,'sushi','#8a5020','#204020'],['Beer',4000,'mug','#ffc020','#ffffff'],['Purple Crystal',5000,'crystal','#a040e0','#d090ff'],['Amethyst',5000,'gem','#a040e0','#d090ff'],
+ ['Butterfly',5000,'butterfly','#ff80c0','#ffe040'],['Crystal',5000,'crystal','#80e0ff','#ffffff'],['Sapphire',6000,'gem','#3060ff','#80a0ff'],['Amethyst Necklace',6000,'necklace','#a040e0','#d090ff'],
+ ['Shellfish',6000,'shell','#ff9060','#ffd0a0'],['Ruby',7000,'gem','#ff2040','#ff90a0'],['Sapphire Necklace',7000,'necklace','#3060ff','#80a0ff'],['Ramen',7000,'bowl','#ffe0a0','#e04040','#ff8020'],
+ ['Ruby Necklace',8000,'necklace','#ff2040','#ff90a0'],['Curry Rice',8000,'bowl','#c08030','#ffffff','#40c040'],['Copper Crown (I)',8000,'crown','#c07030','#ff4040','#a05020'],['Copper Crown (II)',8000,'crown','#c07030','#4060ff','#a05020'],
+ ['Silver Crown (I)',9000,'crown','#d0d0e0','#ff4040','#9090a0'],['Silver Crown (II)',9000,'crown','#d0d0e0','#4060ff','#9090a0'],['Gold Crown (I)',10000,'crown','#ffd040','#ff4040','#c09020'],['Gold Crown (II)',10000,'crown','#ffd040','#4060ff','#c09020'],
+].map(D);
+FOODS.forEach((f,i)=>{ if(i>=54) f.crown=true; });
+// chain pops (second column): tangerine, peach, watermelon, pineapple, then diamonds and grapes
+const CHAIN_FOODS=[
+ ['Tangerine',1000,'round','#ff9020','#ffc060'],['Peach',2000,'round','#ffb0a0','#ffe0d0'],['Watermelon',3000,'round','#30a030','#60d060','#206020'],['Pineapple',5000,'oval','#e0b040','#ffe080','#40a040'],
+ ['Diamond (Purple)',6000,'gem','#c040ff','#e0a0ff'],['Grapes',7000,'round','#a040e0','#d090ff'],['Diamond (Cyan)',7000,'gem','#40e0ff','#a0f0ff'],['Diamond (Yellow)',8000,'gem','#ffe040','#ffffa0'],
+ ['Diamond (Red)',9000,'gem','#ff3040','#ff90a0'],['Diamond (Blue-Purple)',10000,'gem','#6040ff','#a090ff'],
+].map(D);
+// 700-point items that leftover bubbles turn into (third column)
+const END_ITEMS={
+ eclair:['Eclair',700,'eclair','#6a3a1a','#fff0c0'], cherry:['Cherry',700,'round','#ff2a4a','#ff90a0'], strawberry:['Strawberry',700,'oval','#ff3050','#ffffff'], tomato:['Tomato',700,'round','#ff4030','#ff9080'],
+ apple:['Apple',700,'round','#e02020','#ff8080'], noteRed:['Note (Red)',700,'note','#ff3040'], bub:['Bub',700,'figure','#40e040','#ffe080'], chackn:["Chack'n",700,'figure','#ffd040','#ff8020'],
+ computer:['Computer',700,'computer','#123a6a','#60e0ff'], x:['X',700,'x','#e03030'], unnyokun:['Unnyokun',700,'figure','#c08040','#ffffff'], okonomiyaki:['Okonomiyaki',700,'okono','#d08040','#ffffff','#40a040'],
+ cup:['Cup',700,'cupcup','#ffffff','#e03030'], diamondPurple:['Diamond (Purple)',700,'gem','#c040ff','#e0a0ff'], diamondYellow:['Diamond (Yellow)',700,'gem','#ffe040','#ffffa0'], diamondRed:['Diamond (Red)',700,'gem','#ff3040','#ff90a0'],
+ diamondCyan:['Diamond (Cyan)',700,'gem','#40e0ff','#a0f0ff'], diamondBluePurple:['Diamond (Blue-Purple)',700,'gem','#6040ff','#a090ff'], sodaIce:['Soda Pop Ice',700,'bar','#60c0ff','#a0e0ff'], chocIce:['Chocolate Ice',700,'bar','#6a3a1a','#a06030'],
+ tangerine:['Tangerine',700,'round','#ff9020','#ffc060'], watermelon:['Watermelon',700,'round','#30a030','#60d060','#206020'], shortcake:['Shortcake',700,'cake','#fff0d0','#ff8090','#ff3050'],
+};
+for(const k in END_ITEMS) END_ITEMS[k]=D(END_ITEMS[k]);
+// 500-point bonus-stage fillers (fourth column)
+const BONUS_ITEMS={ flowerO:['Flower (Orange)',500,'flower','#ff9020','#ffe060'], flowerR:['Flower (Red)',500,'flower','#ff3050','#ffe060'], clover:['Clover',500,'clover','#40c040'], rainbow:['Rainbow',500,'rainbow','#ff4040'], noteBlue:['Note (Blue)',500,'note','#4080ff'] };
+for(const k in BONUS_ITEMS) BONUS_ITEMS[k]=D(BONUS_ITEMS[k]);
+// the huge ones
+const BIG_ITEMS={
+ diamondPurple:['Big Diamond (Purple)',80000,'gem','#c040ff','#e0a0ff'], diamondYellow:['Big Diamond (Yellow)',70000,'gem','#ffe040','#ffffa0'], diamondRed:['Big Diamond (Red)',60000,'gem','#ff3040','#ff90a0'],
+ diamondCyan:['Big Diamond (Cyan)',50000,'gem','#40e0ff','#a0f0ff'], diamondBluePurple:['Big Diamond (Blue-Purple)',40000,'gem','#6040ff','#a090ff'], sodaIce:['Big Soda Pop Ice',10000,'bar','#60c0ff','#a0e0ff'],
+ chocIce:['Big Chocolate Ice',10000,'bar','#6a3a1a','#a06030'], tangerine:['Big Tangerine',20000,'round','#ff9020','#ffc060'], watermelon:['Big Watermelon',20000,'round','#30a030','#60d060','#206020'],
+ eclair:['Big Eclair',30000,'eclair','#6a3a1a','#fff0c0'], shortcake:['Big Shortcake',30000,'cake','#fff0d0','#ff8090','#ff3050'],
+};
+for(const k in BIG_ITEMS) BIG_ITEMS[k]=D(BIG_ITEMS[k]);
+// special items: name, points, look
+const SPECIALS={
+ candyPink:['Candy (Pink)',100,'candy','#ff60c0','#ff90d0'], candyBlue:['Candy (Blue)',100,'candy','#4080ff','#80b0ff'], candyOrange:['Candy (Orange)',100,'candy','#ff9020','#ffc060'],
+ shoes:['Shoes',100,'shoe','#e03030','#ffffff'], clock:['Clock',200,'clock','#ffd040'], dynamite:['Dynamite',200,'dynamite','#8040c0','#c080ff'],
+ parasolO:['Parasol (Orange)',200,'parasol','#ff9020','#ffd080'], parasolR:['Parasol (Red)',200,'parasol','#ff3040','#ff90a0'], parasolP:['Parasol (Purple)',200,'parasol','#a040e0','#d090ff'],
+ holyO:['Holy Water (Orange)',300,'bottle','#ff9020','#ffd080'], holyR:['Holy Water (Red)',300,'bottle','#ff3040','#ff90a0'], holyG:['Holy Water (Green)',300,'bottle','#40c040','#a0ffa0'],
+ holyY:['Holy Water (Yellow)',300,'bottle','#ffe040','#ffffa0'], holyP:['Holy Water (Purple)',300,'bottle','#a040e0','#d090ff'],
+ heart:["Chack'n Heart",3000,'heart','#ff3060','#ffffff'], ringCrystal:['Crystal Ring',1000,'ring','#80e0ff','#ffffff'], ringAmethyst:['Amethyst Ring',1000,'ring','#a040e0','#d090ff'], ringRuby:['Ruby Ring',1000,'ring','#ff2040','#ff90a0'],
+ crossWater:['Cross of Water',3000,'cross','#40c0ff','#ffffff'], crossThunder:['Cross of Thunder',3000,'cross','#ffe040','#ffffff'], crossFire:['Cross of Fire',3000,'cross','#ff4020','#ffe060'],
+ lampBlue:['Lamp (Blue)',2000,'lamp','#40c0ff'], lampRed:['Lamp (Red)',2000,'lamp','#ff3040'], lampPurple:['Lamp (Purple)',2000,'lamp','#a040e0'], lampYellow:['Lamp (Yellow)',2000,'lamp','#ffe040'],
+ book:['Book of Death',3000,'book','#303050','#8080a0'], tiara:['Star Tiara',3000,'tiara','#ffe040','#80e0ff'], fireNecklace:['Fire Necklace',4000,'necklace','#ff4020','#ff9040'], magicNecklace:['Magic Necklace',5000,'necklace','#ff80c0','#ffc0e0'],
+ fork:['Fork',20,'fork','#d0d0e0'], knife:['Knife',20,'knife','#8040c0'], cola:['Cola',20,'bottle','#e03030','#ffffff'],
+ takoppachi:['Takoppachi',1000,'figure','#ff4040','#ffe0a0'], flamingo:['Pink Flamingo',1000,'flamingo','#ff80c0'], chuhai:['Chuhai',1000,'mug','#ffe060','#ffffff'],
+ boxPurple:['Treasure Box (Purple)',1000,'box','#c040ff','#e0a0ff'], boxYellow:['Treasure Box (Yellow)',1000,'box','#ffe040','#ffffa0'], boxRed:['Treasure Box (Red)',1000,'box','#ff3040','#ff90a0'], boxBlue:['Treasure Box (Blue)',1000,'box','#40c0ff','#a0f0ff'], boxBluePurple:['Treasure Box (Blue-Purple)',1000,'box','#6040ff','#a090ff'],
+ caneBlue:['Magic Cane (Blue)',500,'cane','#40c0ff','#ffffff'], caneBrown:['Magic Cane (Brown)',500,'cane','#8a5020','#ffe0a0'], caneOrange:['Magic Cane (Orange)',500,'cane','#ff9020','#ffe060'], caneRed:['Magic Cane (Red)',500,'cane','#ff3040','#ffffff'], caneCream:['Magic Cane (Cream)',500,'cane','#fff0c0','#ff80c0'], caneWhite:['Magic Cane (White)',500,'cane','#ffffff','#80e0ff'],
+ bell:['Bell',1000,'bell','#ffd040','#ff4040'], crystalBall:['Crystal Ball',5000,'ball','#40c0ff','#ff80c0'], crayon:['Crayon',100,'crayon','#ff4040','#ff9080'],
+ silverDoor:['Silver Door',1000,'door','#d0d0e0','#9090a0'], goldDoor:['Gold Door',3000,'door','#ffd040','#c09020'], specialBubble:['Special Bubble',100000,'bubble','#ff4020','#ffe040'], drug:['Drug of Thunder',1000,'bag','#40a040','#ffe040'],
+};
+for(const k in SPECIALS){ SPECIALS[k]=D(SPECIALS[k]); SPECIALS[k].id=k; }
+const KILL_ALL=new Set(['dynamite','crossWater','crossThunder','lampPurple','book','tiara','fork','knife','cola','magicNecklace']);
+const CROWN_ITEMS=FOODS.slice(54);
+function pickFood(kills){
+  const base=Math.min(FOODS.length-1,Math.floor((round-1)*0.6));
+  if(kills<=1) return FOODS[base];
+  const ch=CHAIN_FOODS[Math.min(kills-2,CHAIN_FOODS.length-1)];
+  return ch.value>=FOODS[base].value ? ch : FOODS[Math.min(FOODS.length-1,base+kills)];
+}
+
+// ---- stats: S is per game, P persists in localStorage ----
+let S=null, P=loadP();
+function loadP(){ const d={gamesBegun:0,levelsBegun:0,p1Joins:0,p2Joins:0,cleared:0,hurryUps:0,name:'BUB',next:{}}; try{ Object.assign(d,JSON.parse(localStorage.getItem('bb_stats')||'{}')); }catch(e){} d.next=d.next||{}; return d; }
+function saveP(){ try{ localStorage.setItem('bb_stats',JSON.stringify(P)); }catch(e){} }
+function newS(){ return {blown:0,popped:0,jumps:0,walked:0,thunderPopped:0,firePopped:0,waterPopped:0,falls:0,drops:0,candyPink:0,candyBlue:0,candyOrange:0,specials:0,foods:0,
+  waterKills:0,fireKills:0,thunderKills:0,skyKills:0,parasols:0,clocks:0,books:0,purpleLamps:0,crossWater:0,crossThunder:0,letters:{E1:0,X:0,T:0,E2:0,N:0,D:0},deaths:0,crownPrev:false,crownThis:false,done:{},next:{}}; }
+// every special item's condition. count/every: appears each time the counter passes the next multiple. at: once per game (or per round).
+const ITEM_CONDS=[
+ {id:'candyPink',count:()=>S.blown,every:35},{id:'candyBlue',count:()=>S.popped,every:35},{id:'candyOrange',count:()=>S.jumps,every:35},{id:'shoes',count:()=>S.walked,every:3840},
+ {id:'clock',count:()=>S.thunderPopped,every:12},{id:'dynamite',count:()=>S.firePopped,every:13},
+ {id:'parasolO',at:()=>S.waterPopped>=15},{id:'parasolR',at:()=>S.waterPopped>=20},{id:'parasolP',at:()=>S.waterPopped>=25},
+ {id:'holyO',at:()=>S.falls>=15},{id:'holyR',at:()=>S.falls>=16},{id:'holyG',at:()=>S.falls>=17},{id:'holyY',at:()=>S.falls>=18},{id:'holyP',at:()=>S.falls>=19},
+ {id:'heart',count:()=>S.drops,every:55},{id:'ringCrystal',count:()=>S.candyBlue,every:3},{id:'ringAmethyst',count:()=>S.candyOrange,every:3},{id:'ringRuby',count:()=>S.candyPink,every:3},
+ {id:'crossWater',count:()=>S.specials,every:11},{id:'crossThunder',count:()=>S.foods,every:12},{id:'crossFire',count:()=>S.waterKills,every:5},
+ {id:'lampBlue',count:()=>P.p1Joins,every:5,persist:true},{id:'lampRed',count:()=>P.p2Joins,every:5,persist:true},{id:'lampPurple',count:()=>S.parasols,every:1},{id:'lampYellow',count:()=>S.clocks,every:2},
+ {id:'book',count:()=>S.fireKills,every:12},{id:'tiara',count:()=>S.thunderKills,every:12},{id:'fireNecklace',count:()=>P.gamesBegun,every:20,persist:true},{id:'magicNecklace',count:()=>P.levelsBegun,every:20,persist:true},
+ {id:'fork',at:()=>P.name==='SEX'},{id:'knife',at:()=>P.name==='...'},{id:'cola',at:()=>['I.F','MTJ','NSO','KIM','YSH'].includes(P.name)},
+ {id:'takoppachi',at:()=>P.name==='TAK'},{id:'flamingo',at:()=>P.name==='STR'},{id:'chuhai',at:()=>P.name==='KTT'},
+ {id:'boxPurple',at:()=>P.cleared>0},{id:'boxYellow',count:()=>S.books,every:3},{id:'boxRed',count:()=>S.purpleLamps,every:3},{id:'boxBlue',count:()=>S.crossWater,every:3},{id:'boxBluePurple',count:()=>S.crossThunder,every:3},
+ {id:'caneBlue',count:()=>S.letters.E1,every:3},{id:'caneBrown',count:()=>S.letters.X,every:3},{id:'caneOrange',count:()=>S.letters.T,every:3},{id:'caneRed',count:()=>S.letters.E2,every:3},{id:'caneCream',count:()=>S.letters.N,every:3},{id:'caneWhite',count:()=>S.letters.D,every:3},
+ {id:'bell',count:()=>P.hurryUps,every:10,persist:true},{id:'crystalBall',at:()=>S.crownPrev,perRound:true},{id:'crayon',count:()=>P.levelsBegun,every:777,persist:true},
+ {id:'silverDoor',at:()=>[20,30,40].includes(round)&&S.deaths===0,perRound:true,now:true},{id:'goldDoor',at:()=>round===50&&S.deaths===0,perRound:true,now:true},{id:'drug',at:()=>round===100,perRound:true,now:true},
+];
+function checkConditions(roundStart){
+  if(!S||level.def.bonus) return;
+  for(const cnd of ITEM_CONDS){
+    if(cnd.count){ const store=cnd.persist?P.next:S.next; if(store[cnd.id]===undefined) store[cnd.id]=cnd.every; const v=cnd.count();
+      if(v>=store[cnd.id]){ store[cnd.id]+=cnd.every; queueItem(cnd.id,cnd.now); if(cnd.persist) saveP(); } }
+    else { const key=cnd.perRound? cnd.id+'@'+round : cnd.id; if(S.done[key]) continue; if(cnd.now && !roundStart) continue; if(cnd.at()){ S.done[key]=true; queueItem(cnd.id,cnd.now); } }
+  }
+}
+
+// ---- items on the field ----
+let items=[], itemQueue=[], itemTimer=0, fx=[], floods=[], flames=[], bolts=[], fireballs=[], energyBalls=[], skyfall=null, killQueue=[];
+let freezeT=0, heartT=0, roundT=0, hurried=false, roundEndItem=null, pendingSecret=false, bellArmed=false, crystalBallT=0, nextExtend=0, thunderMode=false, specialBubbleT=300, quakeT=0;
+let nameEdit=false, nameBuf='';
+function queueItem(id,now){ if(now) spawnItem(id); else if(!itemQueue.includes(id)) itemQueue.push(id); }
+function walkableSpot(){
+  const spots=[]; for(let r=4;r<LH-1;r++) for(let c=3;c<LW-3;c++) if(solidAt(c,r)&&!solidAt(c,r-1)&&!solidAt(c,r-2)&&tileAt(c,r-1)==='.'&&level.grid[r][c]!=='H') spots.push([c,r]);
+  if(!spots.length) return {x:level.spawn.x,y:level.spawn.y-16};
+  const [c,r]=spots[Math.floor(Math.random()*spots.length)]; return {x:c*TILE+4,y:r*TILE};
+}
+function spawnItem(id){
+  const def=SPECIALS[id]; if(!def) return; const s=walkableSpot();
+  items.push({id,def,name:def.name,value:def.value,x:s.x,y:s.y-2,w:12,h:12,vx:0,vy:0,life:(id==='silverDoor'||id==='goldDoor'||id==='drug')?1e9:1500,onGround:false,hitWall:false,age:0});
+  for(let i=0;i<8;i++) particles.push({type:'dot',x:s.x+rnd(-6,6),y:s.y-6+rnd(-6,6),vx:rnd(-0.5,0.5),vy:rnd(-1,0),life:20,max:20,color:'#ffffff'});
+  SFX.spawn();
+}
+function spawnBig(def){
+  const size=Math.min(160,(LW-4)*TILE-8,(LH-4)*TILE-8);
+  items.push({id:'big',def,name:def.name,value:def.value,big:true,size,x:LW*TILE/2,y:3*TILE+size/2,vy:0.35,life:1e9,age:0});
+  banner={text:'A HUGE '+def.name.replace(/^Big /,'').toUpperCase()+'!',t:150}; SFX.escape();
+}
+function updateItems(){
+  itemTimer--;
+  if(itemQueue.length && itemTimer<=0 && !items.some(i=>!i.big) && !bonusActive){ spawnItem(itemQueue.shift()); itemTimer= crystalBallT>0? 60 : 300; }
+  for(const it of items){
+    it.age++; it.life--;
+    if(it.big){ const rest=(LH-1)*TILE-it.size/2; if(it.y<rest){ it.y=Math.min(rest,it.y+it.vy); }
+      for(const p of players){ if(p.state!=='alive') continue; if(p.x>it.x-it.size/2 && p.x<it.x+it.size/2 && p.y>it.y-it.size/2 && p.y-p.h<it.y+it.size/2){ collectItem(it,p); break; } }
+      continue; }
+    it.hitWall=false; physicsStep(it);
+    for(const p of players){ if(p.state==='alive' && it.age>10 && rectOverlap(p,it,0)){ collectItem(it,p); break; } }
+  }
+  items=items.filter(i=>i.life>0);
+}
+function collectItem(it,p){
+  it.life=0; p.score+=it.value; addPopup(it.x,it.y-14,it.name.toUpperCase(),'#ffe060'); addPopup(it.x,it.y-6,String(it.value),'#ffffff'); SFX.fruit();
+  if(it.big){ for(let i=0;i<40;i++) particles.push({type:'dot',x:it.x+rnd(-it.size/2,it.size/2),y:it.y+rnd(-it.size/2,it.size/2),vx:rnd(-1,1),vy:rnd(-2,0),life:40,max:40,color:it.def.a}); SFX.clear(); return; }
+  S.specials++; applyItem(it.id,p);
+}
+function onFoodCollected(f,p){
+  S.foods++; if(f.fromEnemy) S.drops++; if(f.def.crown) S.crownThis=true;
+}
+// what each special item does
+function applyItem(id,p){
+  const all=()=>players;
+  switch(id){
+    case 'candyPink': p.candy.pink=true; S.candyPink++; break;
+    case 'candyBlue': p.candy.blue=true; S.candyBlue++; break;
+    case 'candyOrange': p.candy.orange=true; S.candyOrange++; break;
+    case 'shoes': p.shoes=true; break;
+    case 'clock': freezeT=480; S.clocks++; banner={text:'TIME STOPS!',t:90}; break;
+    case 'dynamite': killAll('explosion'); break;
+    case 'parasolO': skipRounds(3); S.parasols++; break;
+    case 'parasolR': skipRounds(5); S.parasols++; break;
+    case 'parasolP': skipRounds(7); S.parasols++; break;
+    case 'holyO': startBonusFill(BONUS_ITEMS.flowerO); break;
+    case 'holyR': startBonusFill(BONUS_ITEMS.flowerR); break;
+    case 'holyG': startBonusFill(BONUS_ITEMS.clover); break;
+    case 'holyY': startBonusFill(BONUS_ITEMS.rainbow); break;
+    case 'holyP': startBonusFill(BONUS_ITEMS.noteBlue); break;
+    case 'heart': heartT=600; for(const q of all()) q.inv=Math.max(q.inv,600); banner={text:'INVINCIBLE!',t:90}; break;
+    case 'ringCrystal': p.rings.crystal=true; break;
+    case 'ringAmethyst': p.rings.amethyst=true; break;
+    case 'ringRuby': p.rings.ruby=true; break;
+    case 'crossWater': S.crossWater++; killAll('flood'); break;
+    case 'crossThunder': S.crossThunder++; killAll('lightning'); break;
+    case 'crossFire': p.fireballs=16; banner={text:'FIRE BREATH!',t:90}; break;
+    case 'lampBlue': p.stageRings=true; break;
+    case 'lampRed': p.stageRings=true; p.stageCandies=true; break;
+    case 'lampPurple': S.purpleLamps++; killAll('holy'); break;
+    case 'lampYellow': p.stageCandies=true; break;
+    case 'book': S.books++; killAll('quake'); break;
+    case 'tiara': killAll('stars'); break;
+    case 'fireNecklace': nextExtend=10; banner={text:'EXTEND BUBBLES NEXT ROUND!',t:120}; break;
+    case 'magicNecklace': energyBalls.push({x:p.x,y:p.y-8,vx:p.facing*1.8,vy:-1.5,life:720}); break;
+    case 'fork': case 'knife': skyfall={pool:FOODS.slice(Math.min(FOODS.length-6,Math.floor((round-1)*0.6)),Math.min(FOODS.length,Math.floor((round-1)*0.6)+8)),n:26,t:0}; banner={text:'FOOD FROM THE SKY!',t:120}; break;
+    case 'cola': skyfall={pool:[BONUS_ITEMS.flowerO],n:30,t:0}; banner={text:'FLOWERS FROM THE SKY!',t:120}; break;
+    case 'takoppachi': roundEndItem={def:END_ITEMS.x}; break;
+    case 'flamingo': roundEndItem={def:END_ITEMS.unnyokun}; break;
+    case 'chuhai': roundEndItem={def:END_ITEMS.okonomiyaki}; break;
+    case 'boxPurple': roundEndItem={def:END_ITEMS.diamondPurple,big:BIG_ITEMS.diamondPurple}; break;
+    case 'boxYellow': roundEndItem={def:END_ITEMS.diamondYellow,big:BIG_ITEMS.diamondYellow}; break;
+    case 'boxRed': roundEndItem={def:END_ITEMS.diamondRed,big:BIG_ITEMS.diamondRed}; break;
+    case 'boxBlue': roundEndItem={def:END_ITEMS.diamondCyan,big:BIG_ITEMS.diamondCyan}; break;
+    case 'boxBluePurple': roundEndItem={def:END_ITEMS.diamondBluePurple,big:BIG_ITEMS.diamondBluePurple}; break;
+    case 'caneBlue': roundEndItem={def:END_ITEMS.sodaIce,big:BIG_ITEMS.sodaIce}; break;
+    case 'caneBrown': roundEndItem={def:END_ITEMS.chocIce,big:BIG_ITEMS.chocIce}; break;
+    case 'caneOrange': roundEndItem={def:END_ITEMS.tangerine,big:BIG_ITEMS.tangerine}; break;
+    case 'caneRed': roundEndItem={def:END_ITEMS.watermelon,big:BIG_ITEMS.watermelon}; break;
+    case 'caneCream': roundEndItem={def:END_ITEMS.eclair,big:BIG_ITEMS.eclair}; break;
+    case 'caneWhite': roundEndItem={def:END_ITEMS.shortcake,big:BIG_ITEMS.shortcake}; break;
+    case 'bell': bellArmed=true; break;
+    case 'crystalBall': crystalBallT=2; itemTimer=Math.min(itemTimer,60); break;
+    case 'crayon': { const ids=Object.keys(SPECIALS).filter(k=>!['silverDoor','goldDoor','drug','specialBubble','crayon'].includes(k)); for(let i=0;i<3;i++) itemQueue.push(ids[Math.floor(Math.random()*ids.length)]); startBonusFill(BONUS_ITEMS.rainbow); break; }
+    case 'silverDoor': pendingSecret=true; enterExit(p); banner={text:'SECRET ROOM!',t:150}; break;
+    case 'goldDoor': round=69; state='clear'; clearTimer=120; banner={text:'WARP TO ROUND 70!',t:150}; SFX.clear(); break;
+    case 'specialBubble': p.fireballRounds=6; banner={text:'FIRE BREATH FOR 5 ROUNDS!',t:150}; break;
+    case 'drug': thunderMode=true; banner={text:'THUNDER BUBBLES!',t:150}; break;
+  }
+  if(roundEndItem && exitOpen) onRoundWon();
+}
+function skipRounds(n){ round=Math.min(LEVEL_DEFS.length-1,round+n-1); state='clear'; clearTimer=120; banner={text:'PARASOL!  SKIP '+n+' ROUNDS',t:150}; SFX.clear(); }
+// kill-all miracles: a spectacle plus every monster popped in a chain (so the food escalates), bosses take a beating
+function killAll(kind){
+  fx.push({kind,t:0,max:100});
+  if(kind==='quake') quakeT=70;
+  const victims=enemies.filter(e=>e.state==='alive'&&!e.trapped);
+  killQueue.push(...victims.map(e=>({e,kind})));
+  for(const b of bubbles) if(b.enemy) killQueue.push({e:b.enemy,kind,bubble:b});
+  SFX.escape();
+}
+function killWith(e,kind,popper,chain){
+  if(e.state!=='alive') return;
+  if(e.boss){ e.hit({x:e.x,y:e.y-8,r:8}); return; }
+  const b=bubbles.find(o=>o.enemy===e); if(b){ const i=bubbles.indexOf(b); if(i>=0) bubbles.splice(i,1); }
+  killEnemy(e,chain||{count:0,kills:0},popper||null,{x:e.x,y:e.y-8});
+  if(kind==='water') S.waterKills++; else if(kind==='fire') S.fireKills++; else if(kind==='thunder') S.thunderKills++; else if(kind==='sky') S.skyKills++;
+}
+function onRoundWon(){
+  if(round===LEVEL_DEFS.length){ P.cleared++; saveP(); }
+  if(!roundEndItem) return;
+  const {def,big}=roundEndItem; roundEndItem=null;
+  for(const b of bubbles.slice()){ if(b.popping||b.enemy||b.special) continue; const i=bubbles.indexOf(b); bubbles.splice(i,1);
+    fruits.push({x:b.x,y:b.y,w:10,h:12,vx:0,vy:-0.5,def,value:def.value,age:0,dead:false,onGround:false,hitWall:false}); spawnPopParticles(b,'#ffffff'); }
+  if(big) spawnBig(big);
+}
+function startBonusFill(def){
+  enemies=[]; spawnQueue=[]; shots=[]; roundTotal=0; bossSpawned=true; exitOpen=false; bonusActive=true; bonusTimer=BONUS_TIME; fruits=fruits.filter(f=>false);
+  for(let r=3;r<LH-1;r++) for(let c=3;c<LW-3;c++){ if(solidAt(c,r)&&!solidAt(c,r-1)&&!solidAt(c,r-2)&&(c%2===0)&&Math.random()<0.8) fruits.push({x:c*TILE+4,y:r*TILE,w:10,h:12,vx:0,vy:0,def,value:def.value,age:100,dead:false,onGround:true,hitWall:false,permanent:true}); }
+  bonusTotal=fruits.length; banner={text:'BONUS STAGE!  '+def.name.toUpperCase()+'S',t:180}; SFX.clear();
+}
+function startSecretRoom(){
+  const d=genTower('SECRET ROOM',1,1,'grape',9000+round); d.enemies=[]; d.bonus=true; d.dessert=CHAIN_FOODS[4]; d.short='SECRET ROOM';
+  startRound(d);
+}
+
+// ---- special bubbles: water, fire, thunder and EXTEND letters float in from below ----
+const SPECIAL_BUBBLE_COLORS={water:[80,160,255],fire:[255,120,40],thunder:[255,230,60],extend:[200,120,255]};
+const LETTERS=[['E1','E','#ff4040'],['X','X','#ffe040'],['T','T','#40e0ff'],['E2','E','#40e040'],['N','N','#ff80c0'],['D','D','#c0c0ff']];
+function spawnSpecialBubble(kind,fromTop){
+  if(!kind){ if(Math.random()<1/4096){ spawnItem('specialBubble'); return; } const r=Math.random(); kind= r<0.3?'water' : r<0.55?'fire' : r<0.8?'thunder' : 'extend'; }
+  const cols=[]; for(let c=3;c<LW-3;c++) if(tileAt(c,LH-2)==='.'||tileAt(c,LH-2)==='w') cols.push(c);
+  const c=cols.length? cols[Math.floor(Math.random()*cols.length)] : Math.floor(LW/2);
+  const b={x:c*TILE+4,y: fromTop? rnd(4*TILE,LH*TILE-4*TILE) : (LH-2)*TILE+4,r:BUB_R,vx:0,vy:-0.25,phase:'float',age:0,owner:null,enemy:null,trapT:0,popping:false,popDelay:0,popper:null,chain:null,seed:Math.random()*100,atTop:false,squash:0,slideDir:0,blockedUp:false,special:kind};
+  if(kind==='extend'){ b.letter=LETTERS[Math.floor(Math.random()*LETTERS.length)]; }
+  bubbles.push(b);
+}
+function popSpecial(b,p){
+  const i=bubbles.indexOf(b); if(i>=0) bubbles.splice(i,1);
+  const col=SPECIAL_BUBBLE_COLORS[b.special]; spawnPopParticles(b,`rgb(${col[0]},${col[1]},${col[2]})`); SFX.pop(3);
+  const away=-(p?p.facing:1)||1;
+  if(b.special==='water'){ S.waterPopped++; floods.push({x:b.x,y:b.y+4,w:12,h:8,vx:away*1.6,vy:0,life:420,onGround:false,hitWall:false,popper:p}); }
+  else if(b.special==='fire'){ S.firePopped++; const c0=col_(b.x); let r=row(b.y); while(r<LH-1&&!solidAt(c0,r)) r++;
+    for(let dc=-4;dc<=4;dc++){ const c=c0+dc; if(c<2||c>LW-3) continue; if(solidAt(c,r)&&!solidAt(c,r-1)) flames.push({c,r:r-1,life:220+Math.abs(dc)*8,popper:p}); } }
+  else if(b.special==='thunder'){ S.thunderPopped++; bolts.push({x:b.x,y:b.y,vx:away*5,life:70,popper:p,kind:'thunder'}); }
+  else if(b.special==='extend'){ const [k,ch]=b.letter; S.letters[k]++; p.extend[k]=true; addPopup(b.x,b.y-10,ch,b.letter[2]);
+    if(LETTERS.every(L=>p.extend[L[0]])){ p.extend={}; p.score+=10000; p.lives++; banner={text:'EXTEND!  +10000',t:150}; SFX.clear(); } }
+}
+const col_=x=>Math.floor(x/TILE);
+function shootFireball(p){ fireballs.push({x:p.x+p.facing*8,y:p.y-8,vx:p.facing*3.2,life:75,owner:p,dir:p.facing}); SFX.blow(); }
+function fireBolt(x,y,dir){ bolts.push({x,y,vx:dir*5,life:70,popper:null,kind:'thunder'}); }
+
+// ---- per-frame update of everything above ----
+function updateItemSystems(){
+  if(freezeT>0) freezeT--; if(heartT>0) heartT--; if(quakeT>0) quakeT--;
+  roundT++;
+  if(!hurried && roundT>3600 && !bonusActive && !level.def.bonus){ hurried=true; banner={text:'HURRY UP!!',t:150}; for(const e of enemies) e.angry=true; P.hurryUps++; saveP(); SFX.escape(); }
+  if(!bonusActive && !level.def.bonus){ specialBubbleT--; if(specialBubbleT<=0 && bubbles.filter(b=>b.special).length<3){ specialBubbleT=420+Math.random()*300; spawnSpecialBubble(); } }
+  if(frameCount%30===0) checkConditions(false);
+  updateItems();
+  // staggered kill-all
+  if(killQueue.length && frameCount%5===0){ const k=killQueue.shift(); if(k.e.state==='alive'){ killQueue.chain=killQueue.chain||{count:0,kills:0}; killWith(k.e,k.kind,null,killQueue.chain); } if(!killQueue.length) killQueue.chain=null; }
+  // floods: a wave that runs along the floor away from the popper, falls off ledges, bounces off walls
+  for(const f of floods){ f.life--; f.hitWall=false; physicsStep(f); if(f.hitWall) f.vx=-f.vx;
+    if(frameCount%2===0) particles.push({type:'dot',x:f.x+rnd(-6,6),y:f.y-rnd(0,8),vx:-f.vx*0.3,vy:rnd(-0.8,0),life:14,max:14,color:'#80c8ff'});
+    for(const e of enemies) if(e.state==='alive'&&!e.trapped&&rectOverlap(f,e,0)) killWith(e,'water',f.popper); }
+  floods=floods.filter(f=>f.life>0);
+  for(const fl of flames){ fl.life--; for(const e of enemies){ if(e.state!=='alive'||e.trapped) continue; if(col_(e.x)===fl.c && row(e.y-1)===fl.r) killWith(e,'fire',fl.popper); } }
+  flames=flames.filter(f=>f.life>0);
+  for(const bt of bolts){ bt.life--; bt.x+=bt.vx; if(solidAt(col_(bt.x),row(bt.y))) bt.life=0;
+    for(const e of enemies){ if(e.state!=='alive'||e.trapped) continue; if(Math.abs(e.x-bt.x)<10 && Math.abs((e.y-8)-bt.y)<12) killWith(e,'thunder',bt.popper); } }
+  bolts=bolts.filter(b=>b.life>0);
+  for(const fb of fireballs){ fb.life--; fb.x+=fb.vx; if(solidAt(col_(fb.x),row(fb.y))) fb.life=0;
+    for(const e of enemies){ if(e.state!=='alive'||e.trapped) continue; if(Math.abs(e.x-fb.x)<10 && Math.abs((e.y-8)-fb.y)<12){ killWith(e,'fireball',fb.owner,{count:0,kills:0}); fb.life=0; } } }
+  fireballs=fireballs.filter(b=>b.life>0);
+  for(const eb of energyBalls){ eb.life--; const nx=eb.x+eb.vx, ny=eb.y+eb.vy; if(solidAt(col_(nx),row(eb.y))||nx<2*TILE||nx>LW*TILE-2*TILE) eb.vx=-eb.vx; else eb.x=nx;
+    if(solidAt(col_(eb.x),row(ny))||ny<3*TILE||ny>LH*TILE-TILE) eb.vy=-eb.vy; else eb.y=ny;
+    if(frameCount%3===0) particles.push({type:'dot',x:eb.x+rnd(-2,2),y:eb.y+rnd(-2,2),vx:0,vy:0,life:12,max:12,color:'#ff80c0'});
+    for(const e of enemies){ if(e.state==='alive'&&!e.trapped&&Math.hypot(e.x-eb.x,e.y-8-eb.y)<12) killWith(e,'ball',null,{count:0,kills:0}); } }
+  energyBalls=energyBalls.filter(b=>b.life>0);
+  if(skyfall){ skyfall.t++; if(skyfall.t%6===0 && skyfall.n>0){ skyfall.n--; const def=skyfall.pool[Math.floor(Math.random()*skyfall.pool.length)];
+      fruits.push({x:rnd(3*TILE,LW*TILE-3*TILE),y:3*TILE,w:10,h:12,vx:0,vy:1.2,def,value:def.value,age:0,dead:false,onGround:false,hitWall:false,lethal:true}); }
+    if(skyfall.n<=0) skyfall=null; }
+  for(const f of fruits){ if(f.lethal){ if(f.onGround) f.lethal=false; else for(const e of enemies) if(e.state==='alive'&&!e.trapped&&rectOverlap(f,e,0)) killWith(e,'sky',null); } }
+  for(const x of fx){ x.t++;
+    if(x.kind==='stars' && x.t%2===0) particles.push({type:'dot',x:rnd(0,LW*TILE),y:2*TILE,vx:rnd(-2,-1),vy:rnd(2,3.5),life:40,max:40,color:(x.t&2)?'#ffffff':'#ffe060'});
+    if(x.kind==='holy' && x.t%2===0) particles.push({type:'dot',x:rnd(2*TILE,LW*TILE-2*TILE),y:LH*TILE-TILE,vx:rnd(-0.3,0.3),vy:rnd(-3,-1.5),life:50,max:50,color:(x.t&2)?'#c080ff':'#ffffff'});
+    if(x.kind==='quake' && x.t%3===0) particles.push({type:'dot',x:rnd(2*TILE,LW*TILE-2*TILE),y:rnd(3*TILE,LH*TILE),vx:0,vy:rnd(0.5,1.5),life:30,max:30,color:'#a0a0a0'});
+    if(x.kind==='explosion' && x.t<30) particles.push({type:'ring',x:LW*TILE/2+rnd(-40,40),y:LH*TILE/2+rnd(-40,40),r:4,life:14,max:14,color:(x.t&2)?'#ff8020':'#ffe060'}); }
+  fx=fx.filter(x=>x.t<x.max);
+}
+function drawItems(){
+  for(const it of items){
+    if(it.big){ const s=it.size, bob=Math.sin(frameCount*0.05)*3; ctx.imageSmoothingEnabled=false; ctx.drawImage(it.def.img,Math.round(it.x-s/2),Math.round(it.y-s/2+bob),s,s);
+      if((frameCount>>3)&1){ ctx.fillStyle='rgba(255,255,255,0.9)'; ctx.fillRect(Math.round(it.x-s/2+((frameCount>>1)%s)),Math.round(it.y-s/2+bob+((frameCount*3)%s)),3,3); } continue; }
+    if(it.life<180 && ((frameCount>>2)&1)) continue;
+    ctx.drawImage(it.def.img,Math.round(it.x-6),Math.round(it.y-12),12,12);
+    if(it.age<40 && (frameCount&2)){ ctx.fillStyle='#ffffff'; ctx.fillRect(Math.round(it.x-8+(frameCount%14)),Math.round(it.y-15),1,1); }
+  }
+}
+function drawEffectsWorld(){
+  for(const f of floods){ ctx.fillStyle='rgba(70,150,255,0.75)'; ctx.beginPath(); ctx.ellipse(f.x,f.y-4,8,5,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle='rgba(220,245,255,0.9)'; ctx.fillRect(Math.round(f.x-5),Math.round(f.y-8+((frameCount>>2)&1)),10,1); }
+  for(const fl of flames){ const x=fl.c*TILE, y=(fl.r+1)*TILE; for(let k=0;k<3;k++){ const h=3+Math.round(Math.abs(Math.sin(frameCount*0.25+fl.c*1.7+k*2))*6); ctx.fillStyle=k===1?'#ffd030':'#ff6a10'; ctx.fillRect(x+k*3,y-h,2,h); ctx.fillStyle='#fff0a0'; ctx.fillRect(x+k*3,y-h,2,1); } }
+  for(const bt of bolts){ ctx.strokeStyle=(frameCount&2)?'#ffffff':'#ffe040'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(bt.x-bt.vx*4,bt.y); for(let i=0;i<5;i++) ctx.lineTo(bt.x-bt.vx*4+bt.vx*i*1.6,bt.y+((i&1)?-4:4)); ctx.lineTo(bt.x+bt.vx*2,bt.y); ctx.stroke(); }
+  for(const fb of fireballs){ const img=frame('fx_fire',(frameCount>>2)%3,fb.dir); if(img) ctx.drawImage(img,Math.round(fb.x-8),Math.round(fb.y-8)); else { ctx.fillStyle='#ff8020'; ctx.beginPath(); ctx.arc(fb.x,fb.y,5,0,Math.PI*2); ctx.fill(); } }
+  for(const eb of energyBalls){ ctx.fillStyle='rgba(255,128,192,0.4)'; ctx.beginPath(); ctx.arc(eb.x,eb.y,9,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#ff80c0'; ctx.beginPath(); ctx.arc(eb.x,eb.y,5,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#ffffff'; ctx.beginPath(); ctx.arc(eb.x-1.5,eb.y-1.5,2,0,Math.PI*2); ctx.fill(); }
+}
+function drawEffectsScreen(){
+  if(freezeT>0){ ctx.fillStyle='rgba(120,170,255,'+(freezeT<60?0.1:0.22)+')'; ctx.fillRect(0,16,W,H-16); }
+  if(heartT>0 && (frameCount&4)){ ctx.fillStyle='rgba(255,80,120,0.08)'; ctx.fillRect(0,16,W,H-16); }
+  for(const x of fx){ const k=x.t/x.max;
+    if(x.kind==='explosion'){ if(x.t<8){ ctx.fillStyle='rgba(255,255,255,'+(1-x.t/8)+')'; ctx.fillRect(0,16,W,H-16); } ctx.strokeStyle='#ff8020'; ctx.lineWidth=3; ctx.globalAlpha=1-k; ctx.beginPath(); ctx.arc(W/2,H/2,k*220,0,Math.PI*2); ctx.stroke(); ctx.globalAlpha=1; }
+    else if(x.kind==='flood'){ const h=Math.sin(k*Math.PI)*(H-16); ctx.fillStyle='rgba(60,140,255,0.55)'; ctx.fillRect(0,H-h,W,h); ctx.fillStyle='rgba(230,250,255,0.9)'; for(let xx=0;xx<W;xx+=8) ctx.fillRect(xx,H-h+Math.sin(xx*0.3+x.t*0.3)*2,4,2); }
+    else if(x.kind==='lightning'){ if(x.t<40){ ctx.fillStyle='rgba(255,255,255,'+(x.t%4<2?0.5:0.1)+')'; ctx.fillRect(0,16,W,H-16); ctx.strokeStyle='#ffe040'; ctx.lineWidth=4; ctx.beginPath(); let px=W/2, py=16; ctx.moveTo(px,py); for(let i=0;i<8;i++){ px+=rnd(-30,30); py+=(H-16)/8; ctx.lineTo(px,py); } ctx.stroke(); } }
+    else if(x.kind==='holy'){ ctx.fillStyle='rgba(160,80,255,'+(0.25*(1-k))+')'; ctx.fillRect(0,16,W,H-16); }
+    else if(x.kind==='quake'){ ctx.fillStyle='rgba(120,90,60,'+(0.2*(1-k))+')'; ctx.fillRect(0,16,W,H-16); }
+    else if(x.kind==='stars'){ ctx.fillStyle='rgba(255,255,220,'+(0.12*(1-k))+')'; ctx.fillRect(0,16,W,H-16); }
+  }
+}
+function powersText(){
+  const parts=[]; for(const p of players){ const t=[]; if(p.fireballs>0) t.push('FIRE '+p.fireballs); else if(p.fireballRounds>0) t.push('FIRE BREATH');
+    const cd=[p.hasCandy('pink')?'P':'',p.hasCandy('blue')?'B':'',p.hasCandy('orange')?'O':''].join(''); if(cd) t.push('CANDY '+cd);
+    if(p.shoes) t.push('SHOES'); const rg=[p.hasRing('crystal')?'C':'',p.hasRing('amethyst')?'A':'',p.hasRing('ruby')?'R':''].join(''); if(rg) t.push('RINGS '+rg);
+    const ex=LETTERS.filter(L=>p.extend[L[0]]).map(L=>L[1]).join(''); if(ex) t.push(ex);
+    if(t.length) parts.push((players.length>1?(p.idx?'2P ':'1P '):'')+t.join('  ')); }
+  if(thunderMode) parts.push('THUNDER'); if(freezeT>0) parts.push('CLOCK '+Math.ceil(freezeT/60)); if(heartT>0) parts.push('HEART '+Math.ceil(heartT/60));
+  return parts.join('   ');
+}
+
 // ===================== rounds =====================
 function startGame(startAt=1){
   players=[new Player(0)]; if(numPlayers===2) players.push(new Player(1)); player=players[0]; round=startAt; stats={blown:0,popped:0,bounces:0,biggestChain:0};
+  S=newS(); P.gamesBegun++; P.p1Joins++; if(numPlayers===2) P.p2Joins++; saveP(); itemQueue=[]; thunderMode=false; pendingSecret=false; nextExtend=0; bellArmed=false; crystalBallT=0; roundEndItem=null;
   startRound(); state='playing'; paused=false;
 }
-function startRound(){
-  level=makeLevel(defOf(round-1)); LW=level.cols; LH=level.rows; buildLevel();
+function startRound(customDef){
+  level=makeLevel(customDef||defOf(round-1)); LW=level.cols; LH=level.rows; buildLevel();
   enemies=[]; bubbles=[]; fruits=[]; particles=[]; popups=[]; spawnQueue=[]; shots=[]; exitOpen=false; ambient=[]; windT=0;
   bossRound=(round%BOSS_EVERY===0) && !level.def.bonus; bossSpawned=false; bonusActive=false;
   const screens=level.def.sw*level.def.sh;
@@ -1418,6 +1858,13 @@ function startRound(){
   if(level.def.bonus) setupBonus();
   for(const p of players) p.reset();
   camSnap=true; updateCamera();
+  // items and effects for the new round
+  items=[]; fx=[]; floods=[]; flames=[]; bolts=[]; fireballs=[]; energyBalls=[]; skyfall=null; killQueue=[]; freezeT=0; heartT=0; roundT=0; hurried=false; quakeT=0; itemTimer=150; specialBubbleT=360;
+  for(const p of players){ p.stageRings=false; p.stageCandies=false; if(!customDef && p.fireballRounds>0) p.fireballRounds--; }
+  if(!customDef){ S.crownPrev=S.crownThis; S.crownThis=false; P.levelsBegun++; if(crystalBallT>0) crystalBallT--; saveP(); }
+  if(!level.def.bonus){ checkConditions(true);
+    if(nextExtend>0){ for(let i=0;i<nextExtend;i++) spawnSpecialBubble('extend',true); nextExtend=0; }
+    if(bellArmed && itemQueue.some(id=>KILL_ALL.has(id))){ bellArmed=false; banner={text:'THE BELL TOLLS...',t:150}; SFX.clear(); } }
 }
 function setupBonus(){
   bonusActive=true; bonusTimer=BONUS_TIME; spawnQueue=[]; roundTotal=0; fruits=[];
@@ -1447,6 +1894,7 @@ function update(){
     for(const e of enemies) e.update();
     enemies=enemies.filter(e=>e.state!=='dead');
     updateShots();
+    updateItemSystems();
     for(const b of bubbles.slice()) updateBubble(b);
     resolveBubbles();
     for(const f of fruits) updateFruit(f); fruits=fruits.filter(f=>!f.dead);
@@ -1456,7 +1904,7 @@ function update(){
     if(bonusActive){ bonusTimer--; if(bonusTimer<=0 || fruits.length===0) endBonus(); }
     else if(!exitOpen && enemies.length===0 && spawnQueue.length===0){
       if(bossRound && !bossSpawned) spawnBoss();
-      else { exitOpen=true; SFX.clear(); banner={text:'EXIT OPEN!',t:150}; } }
+      else { exitOpen=true; SFX.clear(); banner={text:'EXIT OPEN!',t:150}; onRoundWon(); } }
     updateCamera();
   } else if(state==='clear'){
     clearTimer--;
@@ -1464,9 +1912,9 @@ function update(){
     for(const b of bubbles.slice()) updateBubble(b);
     resolveBubbles();
     for(const f of fruits) updateFruit(f); fruits=fruits.filter(f=>!f.dead);
-    updateParticles(); updateAmbient();
+    updateParticles(); updateAmbient(); updateItems();
     if(banner && --banner.t<=0) banner=null;
-    if(clearTimer<=0){ round++; startRound(); state='playing'; }
+    if(clearTimer<=0){ if(pendingSecret){ pendingSecret=false; startSecretRoom(); } else { round++; startRound(); } state='playing'; }
   } else if(state==='gameover'){
     updateParticles();
     for(const b of bubbles.slice()) updateBubble(b); resolveBubbles();
@@ -1507,7 +1955,7 @@ function drawBubble(b){
   const warn = b.enemy ? b.trapT>BUB_ESCAPE-BUB_WARN : b.age>BUB_LIFE-BUB_WARN;
   const flash = warn && ((frameCount>>3)&1);
   ctx.save(); ctx.translate(b.x,b.y); ctx.scale(sx,sy);
-  const base = flash ? [255,80,80] : [60,225,90];
+  const base = flash ? [255,80,80] : b.special? SPECIAL_BUBBLE_COLORS[b.special] : [60,225,90];
   ctx.beginPath(); ctx.arc(0,0,b.r-0.5,0,Math.PI*2);
   ctx.fillStyle=`rgba(${base[0]},${base[1]},${base[2]},${b.enemy?0.5:0.45})`; ctx.fill();
   if(b.enemy){
@@ -1527,7 +1975,11 @@ function drawBubble(b){
   ctx.strokeStyle= flash ? '#ff4040' : OUTLINE_COLORS[(b.age>>3)%OUTLINE_COLORS.length];
   ctx.beginPath(); ctx.arc(0,0,b.r-0.6,0,Math.PI*2); ctx.stroke();
   ctx.fillStyle='rgba(255,255,255,0.9)'; ctx.fillRect(-4,-5,2,1); ctx.fillRect(-5,-4,1,2);
+  if(b.special==='water'){ ctx.fillStyle='#e0f4ff'; ctx.fillRect(-3,0,6,1); ctx.fillRect(-2,-2,2,1); ctx.fillRect(1,-2,2,1); }
+  else if(b.special==='fire'){ ctx.fillStyle='#ffe060'; ctx.fillRect(-1,-3,2,6); ctx.fillStyle='#ff4020'; ctx.fillRect(-3,0,6,3); ctx.fillStyle='#ffe060'; ctx.fillRect(-1,1,2,2); }
+  else if(b.special==='thunder'){ ctx.fillStyle='#ffffff'; ctx.fillRect(0,-4,2,3); ctx.fillRect(-2,-1,4,2); ctx.fillRect(-1,1,2,3); }
   ctx.restore();
+  if(b.special==='extend') text(b.letter[1],b.x-cam.x,b.y-cam.y+1,b.letter[2],6,'center');
 }
 function drawExit(cx,cy){
   const d=level.exit, pal=level.pal;
@@ -1605,15 +2057,17 @@ function render(){
   ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
   texts.length=0;
   if(state!=='title'){
-    const cx=Math.round(cam.x), cy=Math.round(cam.y);
+    const cx=Math.round(cam.x)+(quakeT>0?Math.round(rnd(-3,3)):0), cy=Math.round(cam.y)+(quakeT>0?Math.round(rnd(-2,2)):0);
     ctx.save(); ctx.translate(-cx,-cy);
     ctx.drawImage(levelCanvas,0,0);
     drawExit(cx,cy);
     for(const k of level.keys){ if(k.taken) continue; const bob=Math.round(Math.sin(frameCount*0.1+k.x)*1.5); ctx.drawImage(KEY_IMGS[k.id]||KEY_IMGS[1],Math.round(k.x-4),Math.round(k.y-8+bob)); if((frameCount>>3)&1){ ctx.fillStyle='#ffffff'; ctx.fillRect(Math.round(k.x-4)+(frameCount>>2)%7,Math.round(k.y-9+bob),1,1); } }
     for(const f of fruits){ if(f.age>840 && !f.permanent && ((frameCount>>2)&1)) continue; ctx.drawImage(f.def.img,Math.round(f.x-6),Math.round(f.y-12),12,12); }
+    drawItems();
     for(const e of enemies) e.draw();
     drawShots();
     for(const b of bubbles) if(!b.popping) drawBubble(b);
+    drawEffectsWorld();
     for(const p of players) p.draw();
     drawFluids(cx,cy);
     for(const p of particles){
@@ -1622,6 +2076,7 @@ function render(){
       else { ctx.fillStyle=p.color; ctx.globalAlpha=Math.min(1,a*1.5); ctx.fillRect(Math.round(p.x),Math.round(p.y),1,1); ctx.globalAlpha=1; }
     }
     ctx.restore();
+    drawEffectsScreen();
     drawAmbient();
     { const wd=windNow(); if(Math.abs(wd)>0.1) text(wd>0?'WIND >>':'<< WIND',128,26,'#c0e0ff',5,'center'); }
     for(const t of popups) text(t.text,t.x-cx,t.y-cy,t.color,6,'center');
@@ -1668,6 +2123,7 @@ function render(){
     text(String(left).padStart(2,'0'),twoP?gx+gw+8:243,twoP?gy+3:15,left===0?(flash?'#40ff40':'#ffffff'):'#ffffff',twoP?6:8,'center');
   }
   if(autofire && state!=='title') text('AUTO',40,H-5,'#f8e030',5,'center');
+  if(state==='playing'||state==='clear'){ const pt=powersText(); if(pt) text(pt,128,H-5,'#ffd040',5,'center'); }
   if(state!=='title') text(String(round),8,26,'#f8e030',8,'center');
   if(twoP){ const b2=frame('bob_walk',0,1); if(b2) ctx.drawImage(b2,W-10,H-9,8,8); }
   if(banner) text(banner.text,128,110,'#ffffff',banner.text.length>26?5:banner.text.length>20?6:8,'center');
@@ -1678,6 +2134,7 @@ function render(){
     ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(16,16,W-32,H-32);
     text('BUBBLE BOBBLE',128,34,'#f8e030',12,'center');
     text('PROTOTYPE',128,48,'#ff80c0',6,'center');
+    text('NAME '+(nameEdit? (nameBuf+(((frameCount>>4)&1)?'_':' ')).padEnd(3,' ') : P.name)+'  N',236,56,nameEdit?'#40ff40':'#a0a0a0',5,'right');
     const b=frame('bub_walk',0,1); if(b) ctx.drawImage(b,26,64,24,24);
     const z=frame('zen_walk',0,-1); if(z) ctx.drawImage(z,206,64,24,24);
     text('SELECT LEVEL  W / S',128,62,'#a0a0a0',5,'center');
@@ -1719,7 +2176,7 @@ function loop(now){
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
-window.__game={get state(){return state;},get player(){return player;},get players(){return players;},get enemies(){return enemies;},get bubbles(){return bubbles;},get stats(){return stats;},get numPlayers(){return numPlayers;},set numPlayers(n){ numPlayers=n; },startGame,keys};
+window.__game={get state(){return state;},get player(){return player;},get players(){return players;},get enemies(){return enemies;},get bubbles(){return bubbles;},get stats(){return stats;},get numPlayers(){return numPlayers;},set numPlayers(n){ numPlayers=n; },get items(){return items;},get S(){return S;},get P(){return P;},spawnItem,applyItem,spawnSpecialBubble,startGame,keys};
 </script>
 </body>
 </html>
