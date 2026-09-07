@@ -78,7 +78,9 @@ function genCave(name,sw,sh,pal,seed,opts={}){
   d.platforms.push([6,L,L+6]); d.spawn=[L+1,5];
   const hatchRow=rows-7; d.platforms.push([hatchRow,L,Rt]);
   const gap=ri(R,L+4,Rt-6); d.doors.push([gap,hatchRow,gap+1,hatchRow,1]);
-  const kp=d.platforms[ri(R,1,Math.max(1,d.platforms.length-4))]; d.keys.push([ri(R,kp[1],kp[2]),kp[0]-1,1]);
+  { const ledges=d.blocks.filter(b=>b[1]>=Math.max(9,Math.floor(rows*0.45))&&b[1]<hatchRow-3); const good=ledges.filter(b=>{ const leftSide=b[0]===L; return d.platforms.some(pl=>pl[0]<b[1]&&pl[0]>=b[1]-7&&((leftSide&&pl[1]===L)||(!leftSide&&pl[2]===Rt))); });
+    const pick=(good.length?good:ledges); if(pick.length){ const b=pick[ri(R,0,pick.length-1)]; d.keys.push([b[0]===L? b[2] : b[0], b[1]-1, 1]); }
+    else { const kp=d.platforms[ri(R,1,Math.max(1,d.platforms.length-4))]; d.keys.push([kp[1]===L? kp[2] : kp[1],kp[0]-1,1]); } }
   d.water.push([L+1,rows-3,Math.floor(cols/2)-2,rows-2]); d.blocks.push([Math.floor(cols/2)-1,rows-3,Math.floor(cols/2)-1,rows-2]);
   d.exit=[Rt-4,rows-3];
   d.falls.push([Rt-1,9,hatchRow-1]);   // a spout along the right wall to get back up
@@ -123,8 +125,15 @@ function genMaze(name,sw,sh,pal,seed,opts={}){
   const placed=[]; const cand=edges.filter(e=>e.tree).sort(()=>R()-0.5);
   for(const e of cand){ if(placed.length>=(opts.doors||0)) break; const side=reachable([...placed,e]); if(side.has(key(...exitRoom))||side.size<2) continue;
     const id=placed.length+1; e.doorId=id; placed.push(e);
-    const roomsSide=[...side].filter(k=>k!==key(...spawnRoom)); const pool=roomsSide.length?roomsSide:[...side]; const kr=pool[ri(R,0,pool.length-1)].split(',').map(Number);
-    const [x0,x1]=cxs[kr[0]], y1=rys[kr[1]][1]; d.keys.push([ri(R,x0+1,x1-1),y1,id]); }
+    // farthest room from the start (by rooms walked) that is still on the open side of this door: an out-of-the-way detour
+    const m=adj([...placed]); const dist={[key(...spawnRoom)]:0}; const q=[key(...spawnRoom)];
+    while(q.length){ const k=q.shift(); for(const n2 of (m[k]||[])) if(dist[n2]===undefined && side.has(n2)){ dist[n2]=dist[k]+1; q.push(n2); } }
+    const usedRooms=(d._keyRooms=d._keyRooms||[]); const fresh=[...side].filter(k=>!usedRooms.includes(k)); const pool=(fresh.length?fresh:[...side]);
+    let best=null; for(const k of pool){ if(k===key(...spawnRoom)&&pool.length>1) continue; if(best===null||(dist[k]||0)>(dist[best]||0)||((dist[k]||0)===(dist[best]||0)&&R()<0.5)) best=k; }
+    usedRooms.push(best);
+    const kr=best.split(',').map(Number); const [x0,x1]=cxs[kr[0]], [y0,y1]=rys[kr[1]];
+    const ledges=d.platforms.filter(([r,a,b])=>r>=y0&&r<=y1&&a>=x0-1&&b<=x1+1&&b-a>=1).sort((u,v)=>u[0]-v[0]);
+    if(ledges.length){ const L2=ledges[0]; d.keys.push([ri(R,Math.max(L2[1],x0),Math.min(L2[2],x1)),L2[0]-1,id]); } else d.keys.push([R()<0.5?x0+1:x1-1,y1,id]); }
   for(const e of placed) d.doors.push([...e.cells,e.doorId]);
   for(let i=0;i<nx;i++) for(let j=0;j<ny;j++){ const [x0,x1]=cxs[i],[y0,y1]=rys[j]; const isSpawn=(i===0&&j===ny-1), isExit=(i===exitRoom[0]&&j===exitRoom[1]);
     if(!isSpawn&&!isExit&&R()<(opts.water||0)) d.water.push([x0,y1-1,x1,y1]);
@@ -341,7 +350,7 @@ function makeLevel(def){
   const lift=([c,r])=>{ let g=0; while(g++<rows && (solid(c,r)||solid(c,r-1)||solid(c+1,r))) r--; return [c,r]; };
   const enemies=def.enemies.map(lift).filter(([c,r])=>r>2).map(at);
   if(!enemies.length) enemies.push(at([ec,er+1]));   // tiny levels: drop the monsters in through the exit doorway
-  const keys=def.keys.map(([c,r,id])=>{ const [c2,r2]=lift([c,r]); return {x:(c2+0.5)*TILE,y:(r2+1)*TILE,id,taken:false}; });
+  const keys=def.keys.map(([c,r,id])=>{ let r2=r, g2=0; while(g2++<rows && (solid(c,r2)||solid(c,r2-1))) r2--; while(g2++<rows*2 && r2+1<rows-1 && !solid(c,r2+1)) r2++; return {x:(c+0.5)*TILE,y:(r2+1)*TILE,id,taken:false}; });
   // bushy trees on platforms that have headroom (levels flagged trees:true)
   const trees=[];
   if(def.trees){ const R=rng(hashStr(def.name));
@@ -1235,8 +1244,9 @@ function render(){
       if(sel){ ctx.fillStyle='rgba(255,255,255,0.14)'; ctx.fillRect(52,y-6,152,12); }
       text(String(i+1).padStart(2,'0')+'  '+LEVEL_INFO[i].name,56,y,sel?'#40ff40':'#ffffff',6,'left');
       text(LEVEL_INFO[i].size,200,y,sel?'#40ff40':'#808080',5,'right'); }
-    text('A/D MOVE  SPACE JUMP (HOLD=BOUNCE)  S+SPACE DROP  E BUBBLE',128,180,'#ffffff',5,'center');
-    text('F AUTOFIRE: '+(autofire?'ON':'OFF')+'   M MUTE   P PAUSE',128,192,'#a0a0a0',5,'center');
+    text('A/D MOVE   SPACE JUMP   S+SPACE DROP',128,176,'#ffffff',5,'center');
+    text('HOLD JUMP TO BOUNCE ON BUBBLES',128,186,'#a0a0a0',5,'center');
+    text('E BUBBLE  F AUTOFIRE '+(autofire?'ON':'OFF')+'  M MUTE  P PAUSE',128,196,'#a0a0a0',5,'center');
     if((frameCount>>4)&1) text('PRESS ENTER',128,208,'#40ff40',7,'center');
     if(!ready) text('LOADING...',128,120,'#ffffff',6,'center');
   }
