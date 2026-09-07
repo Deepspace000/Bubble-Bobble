@@ -19,7 +19,8 @@ Two players (co-op, both must be picked on the title screen):
 | Bob (blue, 2UP) | arrow keys | Up or Right Shift | Right Ctrl, `/` or `.` |
 
 On a phone or tablet (iOS Safari included) on-screen controls appear automatically: a left / right / down pad on the
-left, BUBBLE and JUMP on the right, and a pill in the top corner that pauses (or switches 1P/2P on the title screen).
+left, BUBBLE and JUMP on the right, an AUTO pill (top-left) that toggles autofire, and a pill in the top-right corner that
+pauses (or switches 1P/2P on the title screen).
 Tap JUMP on the title screen to start; the arrows pick the starting level there. Press T on a keyboard to show or hide
 the overlay. Adding the page to the iOS home screen runs it full screen.
 

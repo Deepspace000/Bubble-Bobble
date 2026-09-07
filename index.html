@@ -18,15 +18,19 @@
   #touch.on{display:block}
   #touch .b{position:fixed;pointer-events:auto;display:flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(255,255,255,0.10);border:2px solid rgba(255,255,255,0.35);color:rgba(255,255,255,0.85);font-size:18px;touch-action:none;-webkit-user-select:none;user-select:none}
   #touch .b.down{background:rgba(255,255,255,0.35);border-color:#fff}
-  #touch .dir{width:64px;height:64px}
-  #touch .act{width:80px;height:80px;font-size:14px}
-  #tL{left:calc(16px + env(safe-area-inset-left));bottom:calc(52px + env(safe-area-inset-bottom))}
-  #tR{left:calc(112px + env(safe-area-inset-left));bottom:calc(52px + env(safe-area-inset-bottom))}
-  #tD{left:calc(64px + env(safe-area-inset-left));bottom:calc(8px + env(safe-area-inset-bottom));width:52px;height:52px}
-  #tB{right:calc(110px + env(safe-area-inset-right));bottom:calc(20px + env(safe-area-inset-bottom));background:rgba(80,220,110,0.18);border-color:rgba(120,255,140,0.6)}
-  #tA{right:calc(16px + env(safe-area-inset-right));bottom:calc(60px + env(safe-area-inset-bottom));background:rgba(255,220,60,0.16);border-color:rgba(255,230,120,0.6)}
-  #tP{right:calc(12px + env(safe-area-inset-right));top:calc(8px + env(safe-area-inset-top));width:auto;height:30px;padding:0 14px;border-radius:15px;font-size:10px}
-  @media (max-height:420px){ #touch .dir{width:54px;height:54px} #touch .act{width:66px;height:66px;font-size:12px} #tR{left:calc(96px + env(safe-area-inset-left))} #tD{left:calc(56px + env(safe-area-inset-left));width:44px;height:44px} #tB{right:calc(94px + env(safe-area-inset-right))} }
+  #touch .dir{width:84px;height:84px;font-size:24px}
+  #touch .act{width:104px;height:104px;font-size:15px}
+  #tL{left:calc(14px + env(safe-area-inset-left));bottom:calc(66px + env(safe-area-inset-bottom))}
+  #tR{left:calc(136px + env(safe-area-inset-left));bottom:calc(66px + env(safe-area-inset-bottom))}
+  #tD{left:calc(78px + env(safe-area-inset-left));bottom:calc(6px + env(safe-area-inset-bottom));width:68px;height:68px}
+  #tB{right:calc(136px + env(safe-area-inset-right));bottom:calc(22px + env(safe-area-inset-bottom));background:rgba(80,220,110,0.18);border-color:rgba(120,255,140,0.6)}
+  #tA{right:calc(14px + env(safe-area-inset-right));bottom:calc(72px + env(safe-area-inset-bottom));background:rgba(255,220,60,0.16);border-color:rgba(255,230,120,0.6)}
+  #tP,#tF{top:calc(8px + env(safe-area-inset-top));width:auto;height:36px;padding:0 16px;border-radius:18px;font-size:11px}
+  #tP{right:calc(12px + env(safe-area-inset-right))}
+  #tF{left:calc(12px + env(safe-area-inset-left))}
+  #tF.lit{background:rgba(255,220,60,0.28);border-color:#ffe060;color:#fff}
+  @media (max-width:560px){ #touch .dir{width:74px;height:74px} #touch .act{width:92px;height:92px;font-size:13px} #tL{left:calc(10px + env(safe-area-inset-left));bottom:calc(60px + env(safe-area-inset-bottom))} #tR{left:calc(118px + env(safe-area-inset-left));bottom:calc(60px + env(safe-area-inset-bottom))} #tD{left:calc(64px + env(safe-area-inset-left));bottom:calc(4px + env(safe-area-inset-bottom));width:62px;height:62px} #tB{right:calc(12px + env(safe-area-inset-right));bottom:calc(126px + env(safe-area-inset-bottom))} #tA{right:calc(12px + env(safe-area-inset-right));bottom:calc(14px + env(safe-area-inset-bottom))} }
+  @media (max-height:420px){ #touch .dir{width:66px;height:66px;font-size:20px} #touch .act{width:82px;height:82px;font-size:12px} #tL{bottom:calc(52px + env(safe-area-inset-bottom))} #tR{left:calc(112px + env(safe-area-inset-left));bottom:calc(52px + env(safe-area-inset-bottom))} #tD{left:calc(64px + env(safe-area-inset-left));width:54px;height:54px} #tB{right:calc(98px + env(safe-area-inset-right))} #tA{bottom:calc(60px + env(safe-area-inset-bottom))} #tP,#tF{height:30px;font-size:10px;padding:0 12px} }
 </style>
 </head>
 <body>
@@ -37,6 +41,7 @@
   <div class="b dir" id="tD" data-k="down">&#9660;</div>
   <div class="b act" id="tB" data-k="fire">BUBBLE</div>
   <div class="b act" id="tA" data-k="jump">JUMP</div>
+  <div class="b" id="tF" data-k="auto">AUTO OFF</div>
   <div class="b" id="tP" data-k="pause">PAUSE</div>
 </div>
 <script>
@@ -864,7 +869,7 @@ function pollPads(){
 }
 // touch controls: shown on touch devices (or with T). Each button is a pointer target, so several can be held at once.
 const touchEl=document.getElementById('touch');
-const touchRaw={left:false,right:false,down:false,jump:false,fire:false,pause:false}, touchQueued={};   // queued = pressed since the last frame, so a quick tap is never missed
+const touchRaw={left:false,right:false,down:false,jump:false,fire:false,pause:false,auto:false}, touchQueued={};   // queued = pressed since the last frame, so a quick tap is never missed
 let touchState=null, touchOn=false, touchEverUsed=false;
 function setTouch(on){ touchOn=on; touchEl.classList.toggle('on',on); try{ localStorage.setItem('bb_touch',on?'1':'0'); }catch(e){} }
 { const coarse=(window.matchMedia&&window.matchMedia('(pointer:coarse)').matches) || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.maxTouchPoints>1 && /Macintosh/.test(navigator.userAgent));
@@ -884,8 +889,10 @@ function setTouch(on){ touchOn=on; touchEl.classList.toggle('on',on); try{ local
 }
 function pollTouch(){
   const prev=touchState||{}; const st=Object.assign({},touchRaw);
-  for(const k of ['jump','fire','pause','left','right','down']){ st[k+'P']=!!touchQueued[k] || (st[k]&&!prev[k]); touchQueued[k]=false; }
+  for(const k of ['jump','fire','pause','left','right','down','auto']){ st[k+'P']=!!touchQueued[k] || (st[k]&&!prev[k]); touchQueued[k]=false; }
   touchState=st;
+  if(st.autoP){ autofire=!autofire; try{ localStorage.setItem('bb_autofire',autofire?'1':'0'); }catch(e){} }
+  const fb=document.getElementById('tF'); if(fb){ const want=autofire?'AUTO ON':'AUTO OFF'; if(fb.textContent!==want) fb.textContent=want; fb.classList.toggle('lit',autofire); }
   const pb=document.getElementById('tP'); if(pb){ const want= state==='title' ? (numPlayers===1?'1P':'2P') : paused?'GO':'PAUSE'; if(pb.textContent!==want) pb.textContent=want; }
 }
 function padsFor(idx){ return numPlayers===1 ? [0,1,2,3] : (idx===0 ? [1,3] : [0,2]); }
