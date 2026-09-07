@@ -1683,16 +1683,16 @@ function spawnItem(id){
   const def=SPECIALS[id]; if(!def) return; const s=walkableSpot();
   items.push({id,def,name:def.name,value:def.value,x:s.x,y:s.y-2,w:12,h:12,vx:0,vy:0,life:(id==='silverDoor'||id==='goldDoor'||id==='drug')?1e9:1500,onGround:false,hitWall:false,age:0});
   for(let i=0;i<8;i++) particles.push({type:'dot',x:s.x+rnd(-6,6),y:s.y-6+rnd(-6,6),vx:rnd(-0.5,0.5),vy:rnd(-1,0),life:20,max:20,color:'#ffffff'});
-  SFX.spawn();
+  if(bellArmed && KILL_ALL.has(id)){ banner={text:'THE BELL TOLLS: '+def.name.toUpperCase()+' IS HERE',t:150}; SFX.clear(); } else SFX.spawn();
 }
 function spawnBig(def){
   const size=Math.min(160,(LW-4)*TILE-8,(LH-4)*TILE-8);
-  items.push({id:'big',def,name:def.name,value:def.value,big:true,size,x:LW*TILE/2,y:3*TILE+size/2,vy:0.35,life:1e9,age:0});
+  items.push({id:'big',def,name:def.name,value:def.value,big:true,size,x:LW*TILE/2,y:3*TILE-size/2+8,vy:0.45,life:1e9,age:0});
   banner={text:'A HUGE '+def.name.replace(/^Big /,'').toUpperCase()+'!',t:150}; SFX.escape();
 }
 function updateItems(){
   itemTimer--;
-  if(itemQueue.length && itemTimer<=0 && items.filter(i=>!i.big).length<2 && !bonusActive){ spawnItem(itemQueue.shift()); itemTimer= crystalBallT>0? 60 : 240; }
+  if(state==='playing' && itemQueue.length && itemTimer<=0 && items.filter(i=>!i.big).length<2 && !bonusActive){ spawnItem(itemQueue.shift()); itemTimer= crystalBallT>0? 60 : 240; }
   for(const it of items){
     it.age++; it.life--;
     if(it.big){ const rest=(LH-1)*TILE-it.size/2; if(it.y<rest){ it.y=Math.min(rest,it.y+it.vy); }
