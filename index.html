@@ -355,7 +355,7 @@ function makeLevel(def){
   const THEMES={forest:['grass','grass','flower','flower','smalltree','rock','garden'], cave:['rock','rock','stone','stone','grass','box'],
     stone:['box','lamp','monitor','stone','grass'], ember:['box','box','lamp','monitor','rock'], ocean:['stone','stone','grass','box','flower'],
     sunset:['flower','garden','grass','lamp','box'], grape:['monitor','box','lamp','flower','stone'], ice:['stone','rock','lamp','grass']};
-  const decor=[]; { const R=rng(hashStr(def.name)+7), kinds=THEMES[def.pal]||THEMES.sunset; const HEAD={grass:1,flower:1,stone:1,rock:1,box:1,monitor:1,smalltree:3,lamp:3,garden:1};
+  const decor=[]; { const R=rng(hashStr(def.name)+7), kinds=THEMES[def.pal]||THEMES.sunset; const HEAD={grass:1,flower:1,stone:1,rock:1,box:2,monitor:1,smalltree:3,lamp:3,garden:1};
     for(let r=3;r<rows-1;r++){ let c=2; while(c<=cols-3){
       if(solid(c,r)&&!solid(c,r-1)){ let e=c; while(e+1<=cols-3&&solid(e+1,r)&&!solid(e+1,r-1)) e++; const len=e-c+1;
         const n=len<3?0:len<8?(R()<0.6?1:0):1+ri(R,0,Math.min(3,Math.floor(len/6)));
@@ -445,8 +445,8 @@ function drawProp(g,d){
       for(let i=0;i<4;i++) px(x-5+i*3,y-2,1,2,'#3fc04c'); break; }
     case 'stone': { px(x-1,y-2,4,2,'#8a8a98'); px(x-1,y-2,2,1,'#c0c0cc'); px(x-2,y-1,1,1,'#6a6a78'); break; }
     case 'rock': { px(x-3,y-4,7,4,'#5a5a68'); px(x-2,y-5,5,1,'#5a5a68'); px(x-2,y-4,3,2,'#9a9aa8'); px(x-4,y-2,1,2,'#5a5a68'); px(x+2,y-1,2,1,'#3a3a48'); break; }
-    case 'box': { const two=R()<0.35; const crate=(bx,by)=>{ px(bx-4,by-8,8,8,'#3a2210'); px(bx-3,by-7,6,6,'#a06a30'); px(bx-3,by-7,6,1,'#c88a48'); px(bx-3,by-7,1,6,'#c88a48'); px(bx-1,by-6,1,4,'#6a4218'); px(bx-3,by-4,6,1,'#6a4218'); };
-      crate(x,y); if(two) crate(x+(R()<0.5?-3:3),y-8); break; }
+    case 'box': { const two=R()<0.35; const crate=(bx,by)=>{ px(bx-6,by-13,13,13,'#3a2210'); px(bx-5,by-12,11,11,'#a06a30'); px(bx-5,by-12,11,1,'#c88a48'); px(bx-5,by-12,1,11,'#c88a48'); px(bx-5,by-7,11,1,'#6a4218'); px(bx,by-11,1,9,'#6a4218'); px(bx-4,by-11,1,1,'#3a2210'); px(bx+4,by-11,1,1,'#3a2210'); px(bx-4,by-3,1,1,'#3a2210'); px(bx+4,by-3,1,1,'#3a2210'); };
+      crate(x,y); if(two) crate(x+(R()<0.5?-4:4),y-13); break; }
     case 'monitor': { px(x-4,y-8,8,7,'#8a8a98'); px(x-3,y-7,6,4,'#123a6a'); px(x-2,y-6,3,1,'#60e0ff'); px(x-2,y-5,2,1,'#60e0ff'); px(x+1,y-5,1,1,'#60e0ff'); px(x-1,y-1,2,1,'#5a5a68'); px(x-2,y-2,4,1,'#5a5a68'); px(x+2,y-3,1,1,'#40ff40'); break; }
     case 'lamp': { px(x,y-18,1,18,'#3a3a48'); px(x-2,y-1,5,1,'#3a3a48'); px(x-2,y-20,5,3,'#5a5a68'); px(x-1,y-19,3,1,'#ffe080'); px(x-3,y-21,7,1,'#3a3a48');
       g.fillStyle='rgba(255,230,120,0.13)'; g.beginPath(); g.arc(x+0.5,y-18,9,0,Math.PI*2); g.fill(); break; }
