@@ -804,7 +804,7 @@ class Enemy{
     const p=player; if(!p||p.state!=='alive') return;
     const dx=p.x-this.x, dy=p.y-this.y, kind=this.type.shoot; let fired=false;
     if(kind==='rock' && Math.abs(dy)<20 && Math.abs(dx)<110 && this.onGround){ this.dir=sgn(dx)||this.dir; shots.push({type:'rock',x:this.x+this.dir*8,y:this.y,w:8,h:8,vx:this.dir*1.3,vy:-1.2,life:360,onGround:false,hitWall:false}); fired=true; }
-    else if(kind==='laser' && dy>10 && Math.abs(dx)<30){ shots.push({type:'laser',x:this.x,y:this.y+2,w:2,h:10,vx:0,vy:2.6,life:200}); fired=true; }
+    else if(kind==='laser' && dy>10 && Math.abs(dx)<30){ let r=row(this.y); while(r<LH-1 && solidAt(col(this.x),r)) r++; shots.push({type:'laser',x:this.x,y:r*TILE+10,w:2,h:10,vx:0,vy:2.6,life:200}); fired=true; }
     else if(kind==='fire' && Math.abs(dy)<16 && Math.abs(dx)<70 && sgn(dx)===this.dir){ shots.push({type:'fire',x:this.x+this.dir*12,y:this.y,w:14,h:12,vx:this.dir*1.1,vy:0,life:48,dir:this.dir}); fired=true; }
     else if(kind==='bottle' && Math.abs(dx)<130 && dy>-40){ this.dir=sgn(dx)||this.dir; shots.push({type:'bottle',x:this.x+this.dir*6,y:this.y-8,w:8,h:10,vx:this.dir*clamp(Math.abs(dx)/70,0.6,1.6),vy:-2.8,life:240}); fired=true; }
     if(fired){ this.shotCd=rnd(this.type.cd[0],this.type.cd[1])*(this.angry?0.6:1); this.throwT=20; SFX.spawn(); }
