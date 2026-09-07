@@ -1487,8 +1487,8 @@ function addPopup(x,y,text,color){ popups.push({x,y,text,color,life:60}); }
 // Values follow the arcade item table: foods advance with the round, chain pops hand out the bonus fruits and diamonds,
 // bubbles left over when a round is won can turn into 700-point items, bonus stages fill with 500-point ones, and the
 // "big" versions are huge (about ten Bubs tall) and worth a fortune. Every special item has a function and a condition.
-function makeIcon(shape,a,b,c){
-  const cv=document.createElement('canvas'); cv.width=12; cv.height=12; const g=cv.getContext('2d');
+function makeIcon(shape,a,b,c,scale=1){
+  const cv=document.createElement('canvas'); cv.width=12*scale; cv.height=12*scale; const g=cv.getContext('2d'); g.scale(scale,scale);
   b=b||'#ffffff'; c=c||'#2fa82f';
   const R=(x,y,w,h,col)=>{ g.fillStyle=col; g.fillRect(x,y,w,h); };
   const C=(x,y,r,col)=>{ g.fillStyle=col; g.beginPath(); g.arc(x,y,r,0,Math.PI*2); g.fill(); };
@@ -1608,7 +1608,7 @@ const BIG_ITEMS={
  chocIce:['Big Chocolate Ice',10000,'bar','#6a3a1a','#a06030'], tangerine:['Big Tangerine',20000,'round','#ff9020','#ffc060'], watermelon:['Big Watermelon',20000,'round','#30a030','#60d060','#206020'],
  eclair:['Big Eclair',30000,'eclair','#6a3a1a','#fff0c0'], shortcake:['Big Shortcake',30000,'cake','#fff0d0','#ff8090','#ff3050'],
 };
-for(const k in BIG_ITEMS) BIG_ITEMS[k]=D(BIG_ITEMS[k]);
+for(const k in BIG_ITEMS){ BIG_ITEMS[k]=D(BIG_ITEMS[k]); const d=BIG_ITEMS[k]; d.bigImg=makeIcon(d.shape,d.a,d.b,d.c,10); }   // a smooth 120px rendering for the huge version
 // special items: name, points, look
 const SPECIALS={
  candyPink:['Candy (Pink)',100,'candy','#ff60c0','#ff90d0'], candyBlue:['Candy (Blue)',100,'candy','#4080ff','#80b0ff'], candyOrange:['Candy (Orange)',100,'candy','#ff9020','#ffc060'],
@@ -1686,8 +1686,8 @@ function spawnItem(id){
   if(bellArmed && KILL_ALL.has(id)){ banner={text:'THE BELL TOLLS: '+def.name.toUpperCase()+' IS HERE',t:150}; SFX.clear(); } else SFX.spawn();
 }
 function spawnBig(def){
-  const size=Math.min(160,(LW-4)*TILE-8,(LH-4)*TILE-8);
-  items.push({id:'big',def,name:def.name,value:def.value,big:true,size,x:LW*TILE/2,y:3*TILE-size/2+8,vy:0.45,life:1e9,age:0});
+  const size=Math.min(120,(LW-4)*TILE-8,(LH-4)*TILE-8);
+  items.push({id:'big',def,name:def.name,value:def.value,big:true,size,x:LW*TILE/2,y:3*TILE-size/2+8,vy:0,life:1e9,age:0,landed:false});
   banner={text:'A HUGE '+def.name.replace(/^Big /,'').toUpperCase()+'!',t:150}; SFX.escape();
 }
 function updateItems(){
@@ -1695,7 +1695,10 @@ function updateItems(){
   if(state==='playing' && itemQueue.length && itemTimer<=0 && items.filter(i=>!i.big).length<2 && !bonusActive){ spawnItem(itemQueue.shift()); itemTimer= crystalBallT>0? 60 : 240; }
   for(const it of items){
     it.age++; it.life--;
-    if(it.big){ const rest=(LH-1)*TILE-it.size/2; if(it.y<rest){ it.y=Math.min(rest,it.y+it.vy); }
+    if(it.big){ const rest=(LH-1)*TILE-it.size/2;
+      if(!it.landed){ it.vy=Math.min(it.vy+0.25,5); it.y+=it.vy; if(it.y>=rest){ it.y=rest; it.landed=true; quakeT=Math.max(quakeT,14); SFX.bounce();
+          for(let i=0;i<24;i++) particles.push({type:'dot',x:it.x+rnd(-it.size/2,it.size/2),y:rest+it.size/2-2,vx:rnd(-1.5,1.5),vy:rnd(-2.5,-0.5),life:30,max:30,color:i%2?'#ffffff':'#c0c0c0'}); }
+        continue; }
       for(const p of players){ if(p.state!=='alive') continue; if(p.x>it.x-it.size/2 && p.x<it.x+it.size/2 && p.y>it.y-it.size/2 && p.y-p.h<it.y+it.size/2){ collectItem(it,p); break; } }
       continue; }
     it.hitWall=false; physicsStep(it);
@@ -1872,7 +1875,7 @@ function updateItemSystems(){
 }
 function drawItems(){
   for(const it of items){
-    if(it.big){ const s=it.size, bob=Math.sin(frameCount*0.05)*3; ctx.imageSmoothingEnabled=false; ctx.drawImage(it.def.img,Math.round(it.x-s/2),Math.round(it.y-s/2+bob),s,s);
+    if(it.big){ const s=it.size, bob=it.landed?Math.sin(frameCount*0.05)*2:0; ctx.imageSmoothingEnabled=true; ctx.drawImage(it.def.bigImg||it.def.img,Math.round(it.x-s/2),Math.round(it.y-s/2+bob),s,s); ctx.imageSmoothingEnabled=false;
       if((frameCount>>3)&1){ ctx.fillStyle='rgba(255,255,255,0.9)'; ctx.fillRect(Math.round(it.x-s/2+((frameCount>>1)%s)),Math.round(it.y-s/2+bob+((frameCount*3)%s)),3,3); } continue; }
     if(it.life<180 && ((frameCount>>2)&1)) continue;
     ctx.drawImage(it.def.img,Math.round(it.x-6),Math.round(it.y-12),12,12);
