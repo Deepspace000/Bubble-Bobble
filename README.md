@@ -1,4 +1,4 @@
-# Bubble Bobble Odyssey
+# Bubble Bobble Adventure
 
 A browser game inspired by Taito's 1986 arcade game Bubble Bobble: blow bubbles, trap enemies, bounce on your bubbles,
 and clear 100 rounds of platforms, shafts, caves, labyrinths, waterfalls, forests, cities, space, fire and ice.

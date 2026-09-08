@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="theme-color" content="#000000">
-<title>Bubble Bobble Odyssey</title>
+<title>Bubble Bobble Adventure</title>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Bubblegum+Sans&display=swap" rel="stylesheet">
 <style>
   html,body{margin:0;height:100%;background:#000;overflow:hidden}
@@ -2302,7 +2302,7 @@ function render(){
   if(state==='title'){
     ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(16,16,W-32,H-32);
     text('BUBBLE BOBBLE',128,31,'#f8e030',12,'center');
-    text('Odyssey',128,44,'#ff80c0',17,'center',FONT_TITLE);
+    text('Adventure',128,44,'#ff80c0',17,'center',FONT_TITLE);
     text('NAME '+(nameEdit? (nameBuf+(((frameCount>>4)&1)?'_':' ')).padEnd(3,' ') : P.name)+'  N',236,56,nameEdit?'#40ff40':'#a0a0a0',5,'right');
     const b=frame('bub_walk',0,1); if(b) ctx.drawImage(b,26,64,24,24);
     const z=frame('zen_walk',0,-1); if(z) ctx.drawImage(z,206,64,24,24);
