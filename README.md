@@ -28,6 +28,14 @@ Gamepads (standard mapping) also work: stick or d-pad moves, A jumps, X (or B/Y/
 With one player any pad plays. With two players the first pad is Bob and a second pad is Bub, so "joypad + WASD" is
 the natural two-player setup.
 
+## Saving
+
+The game checkpoints itself at the start of every round, with one save for 1-player games and one for 2-player games.
+On the title screen pick 1 or 2 players and press C (gamepad: the bubble button, touch: the CONTINUE pill) to carry on
+from the saved round with scores, candies, shoes, rings and thunder bubbles intact. Escape during a game saves and returns
+to the title; Delete on the title clears the save for the selected player count. A new game only overwrites the old
+save once it reaches its second round, so a stray Enter costs nothing.
+
 ## Rounds
 
 Rounds 1-72 are the original mix (with a dessert treasure room every sixth slot and a boss every fifth round).
