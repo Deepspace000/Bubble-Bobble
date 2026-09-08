@@ -2302,7 +2302,7 @@ function render(){
   if(state==='title'){
     ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(16,16,W-32,H-32);
     text('BUBBLE BOBBLE',128,31,'#f8e030',12,'center');
-    text('Adventures',128,44,'#ff80c0',17,'center',FONT_TITLE,true);
+    text('Adventures',128,42,'#ff80c0',19.5,'center',FONT_TITLE,true);
     text('NAME '+(nameEdit? (nameBuf+(((frameCount>>4)&1)?'_':' ')).padEnd(3,' ') : P.name)+'  N',236,56,nameEdit?'#40ff40':'#a0a0a0',5,'right');
     const b=frame('bub_walk',0,1); if(b) ctx.drawImage(b,26,64,24,24);
     const z=frame('zen_walk',0,-1); if(z) ctx.drawImage(z,206,64,24,24);
