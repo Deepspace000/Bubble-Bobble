@@ -67,7 +67,7 @@ Candy powers wear off after six lost lives; the Cross of Thunder fires lightning
 
 All 53 special items appear under their arcade conditions, with their arcade effects: candies and shoes upgrade Bub,
 the clock stops time, dynamite / crosses / lamps / book / tiara / fork / knife / cola clear the screen in different ways,
-parasols skip rounds, holy waters and the crayon turn the level into a bonus stage, rings pay you for walking,
+parasols (rare) skip rounds, holy waters and the crayon turn the level into a bonus stage, rings pay you for walking,
 jumping and blowing, the necklaces give extend bubbles or an energy ball, the doors lead to a secret room or warp to
 round 70, Takoppachi / the flamingo / chuhai / treasure boxes / magic canes turn leftover bubbles into items when the
 round is won, and the treasure boxes and canes also summon a HUGE version of that item (about ten Bubs tall, worth up

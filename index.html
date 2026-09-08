@@ -1666,7 +1666,7 @@ function newS(){ return {blown:0,popped:0,jumps:0,walked:0,thunderPopped:0,fireP
 const ITEM_CONDS=[
  {id:'candyPink',count:()=>S.blown,every:35},{id:'candyBlue',count:()=>S.popped,every:35},{id:'candyOrange',count:()=>S.jumps,every:35},{id:'shoes',count:()=>S.walked,every:3840},
  {id:'clock',count:()=>S.thunderPopped,every:12},{id:'dynamite',count:()=>S.firePopped,every:13},
- {id:'parasolO',count:()=>S.waterPopped,every:6},{id:'parasolR',count:()=>S.waterPopped,every:10},{id:'parasolP',count:()=>S.waterPopped,every:15},
+ {id:'parasolO',count:()=>S.waterPopped,every:12},{id:'parasolR',count:()=>S.waterPopped,every:20},{id:'parasolP',count:()=>S.waterPopped,every:30},
  {id:'holyO',at:()=>S.falls>=15},{id:'holyR',at:()=>S.falls>=16},{id:'holyG',at:()=>S.falls>=17},{id:'holyY',at:()=>S.falls>=18},{id:'holyP',at:()=>S.falls>=19},
  {id:'heart',count:()=>S.drops,every:55},{id:'ringCrystal',count:()=>S.candyBlue,every:3},{id:'ringAmethyst',count:()=>S.candyOrange,every:3},{id:'ringRuby',count:()=>S.candyPink,every:3},
  {id:'crossWater',count:()=>S.specials,every:11},{id:'crossThunder',count:()=>S.foods,every:12},{id:'crossFire',count:()=>S.waterKills,every:5},
@@ -2006,7 +2006,7 @@ function startRound(customDef){
   { const R=rng(round*7919+13); const any=R()<0.7;   // 7 rounds in 10 have special bubbles; each of those gets one or two kinds
     const kinds=['water','fire','thunder'].filter(()=>R()<0.45); if(any && !kinds.length) kinds.push(['water','fire','thunder'][ri(R,0,2)]);
     roundSpecials={water:any&&kinds.includes('water'),fire:any&&kinds.includes('fire'),thunder:any&&kinds.includes('thunder'),extend:R()<0.65}; }
-  if(!level.def.bonus && !customDef && round<LEVEL_DEFS.length-3 && Math.random()<0.15) queueItem(['parasolO','parasolO','parasolR','parasolP'][Math.floor(Math.random()*4)]);   // a parasol turns up now and then on its own
+  if(!level.def.bonus && !customDef && round<LEVEL_DEFS.length-3 && Math.random()<0.04) queueItem(['parasolO','parasolO','parasolR','parasolP'][Math.floor(Math.random()*4)]);   // a parasol turns up now and then on its own
   if(!level.def.bonus){ checkConditions(true);
     if(nextExtend>0){ for(let i=0;i<nextExtend;i++) spawnSpecialBubble('extend',true); nextExtend=0; }
     if(bellArmed && itemQueue.some(id=>KILL_ALL.has(id))){ bellArmed=false; banner={text:'THE BELL TOLLS...',t:150}; SFX.clear(); } }
