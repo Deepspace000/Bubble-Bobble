@@ -58,9 +58,11 @@ The full arcade item table is in. Popped monsters drop food that gets richer as 
 crowns); popping several at once hands out the chain bonuses (tangerine, peach, watermelon, pineapple, grapes and the
 diamonds). Bosses drop crowns.
 
-Special bubbles drift up from the floor: **water** (pop it and a flood sweeps monsters away), **fire** (flames spread
-along the platform), **thunder** (a lightning bolt shoots off) and **EXTEND** letters (collect all six for a bonus).
-Take too long and HURRY UP! makes the monsters angry.
+Special bubbles drift up from the floor on some rounds (each round has its own mix, and some have none): **water**
+(pop it and a stream runs along the platforms and off the edges all the way to the floor, sweeping monsters away; touch
+it and Bub rides it, jump to hop off), **fire** (flames spread along the platform), **thunder** (a lightning bolt shoots
+off) and **EXTEND** letters (collect all six for a bonus). Take too long and HURRY UP! makes the monsters angry.
+Candy powers wear off after six lost lives; the Cross of Thunder fires lightning across every row of the level.
 
 All 53 special items appear under their arcade conditions, with their arcade effects: candies and shoes upgrade Bub,
 the clock stops time, dynamite / crosses / lamps / book / tiara / fork / knife / cola clear the screen in different ways,

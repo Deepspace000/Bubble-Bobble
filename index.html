@@ -1031,11 +1031,11 @@ let stats={blown:0,popped:0,bounces:0,biggestChain:0};
 
 class Player{
   constructor(idx=0){ this.idx=idx; this.spr= idx? 'bob':'bub'; this.w=10; this.h=15; this.score=0; this.lives=3; this.clearPowers(); this.fireballRounds=0; this.extend={}; this.stageRings=false; this.stageCandies=false; this.reset(); }
-  clearPowers(){ this.candy={}; this.shoes=false; this.rings={}; this.fireballs=0; this.walkAcc=0; }
+  clearPowers(){ this.candy={}; this.candyDeaths=0; this.shoes=false; this.rings={}; this.fireballs=0; this.walkAcc=0; }
   hasCandy(k){ return !!(this.candy[k]||this.stageCandies); }
   hasRing(k){ return !!(this.rings[k]||this.stageRings); }
   reset(){ this.x=level.spawn.x+(this.idx?3:-3); this.y=level.spawn.y; this.vx=0; this.vy=0; this.facing=1; this.onGround=false; if(numPlayers===1) camSnap=true;
-    this.state='alive'; this.timer=0; this.inv=120; this.fireCd=0; this.anim=0; this.blowT=0; this.jumpHeld=false; this.fallAnim=0; this.idleT=0; this.mom=0; this.heatT=0; this.stepper=true; }
+    this.state='alive'; this.timer=0; this.inv=120; this.fireCd=0; this.anim=0; this.blowT=0; this.jumpHeld=false; this.fallAnim=0; this.idleT=0; this.mom=0; this.heatT=0; this.stepper=true; this.riding=null; this.rideCd=0; }
   update(){
     if(this.state==='dead') return;
     if(this.state==='dying'){
@@ -1046,6 +1046,14 @@ class Player{
     }
     const inp=readInput(this), left=inp.left, right=inp.right;
     this.jumpHeld=inp.jump;
+    if(this.rideCd>0) this.rideCd--;
+    if(this.riding){ const f=this.riding;
+      if(f.life<=0||floods.indexOf(f)<0){ this.riding=null; }
+      else { this.x=f.x; this.y=f.y-1; this.vx=f.vx; this.vy=0; this.onGround=true; this.facing=sgn(f.vx)||this.facing; this.anim++; this.idleT=0;
+        if(this.inv>0) this.inv--; if(this.fireCd>0) this.fireCd--; if(this.blowT>0) this.blowT--;
+        if(inp.jumpP){ this.riding=null; this.rideCd=25; this.vy=-JUMP_V; this.onGround=false; SFX.jump(); }
+        for(const fr of fruits){ if(!fr.dead && fr.age>20 && rectOverlap(this,fr,0)){ fr.dead=true; this.score+=fr.value; addPopup(fr.x,fr.y-10,String(fr.value),'#ffffff'); SFX.fruit(); onFoodCollected(fr,this); } }
+        if(this.riding) return; } }
     const mv=MOVE*(this.shoes?1.5:1);
     const want=(left&&!right ? -mv : right&&!left ? mv : 0) * (this.inWater?0.65:1);
     // ice: momentum builds and bleeds off slowly, so Bub slides. Wind gusts shove him, mostly in the air.
@@ -1101,7 +1109,9 @@ class Player{
     for(let i=0;i<6;i++) particles.push({type:'dot',x:this.x+rnd(-5,5),y:(r0+thick)*TILE+2,vx:rnd(-0.6,0.6),vy:rnd(0.2,1),life:16,max:16,color:'#c0c0c0'});
     SFX.spawn(); return true;
   }
-  die(){ S.deaths++; this.state='dying'; this.timer=130; this.vy=-2.2; this.vx=-this.facing*0.4; if(!INFINITE_LIVES) this.lives--; this.anim=0; SFX.death(); }
+  die(){ S.deaths++; this.candyDeaths=(this.candyDeaths||0)+1;
+    if(this.candyDeaths>=6 && Object.keys(this.candy).length){ this.candy={}; this.candyDeaths=0; banner={text:'CANDY POWER WORN OFF',t:120}; }   // candies last six lives
+    this.state='dying'; this.timer=130; this.vy=-2.2; this.vx=-this.facing*0.4; if(!INFINITE_LIVES) this.lives--; this.anim=0; SFX.death(); }
   burn(){ for(let i=0;i<14;i++) particles.push({type:'dot',x:this.x+rnd(-5,5),y:this.y-rnd(0,14),vx:rnd(-0.8,0.8),vy:rnd(-2,-0.5),life:24,max:24,color:i%2?'#ffd040':'#ff5010'}); this.heatT=0; this.mom=0; this.die(); }
   draw(){
     if(this.state==='dead') return;
@@ -1673,9 +1683,11 @@ function checkConditions(roundStart){
 }
 
 // ---- items on the field ----
+const stormChain={count:0,kills:0};
 let items=[], itemQueue=[], itemTimer=0, fx=[], floods=[], flames=[], bolts=[], fireballs=[], energyBalls=[], skyfall=null, killQueue=[];
 let freezeT=0, heartT=0, roundT=0, hurried=false, roundEndItem=null, pendingSecret=false, bellArmed=false, crystalBallT=0, nextExtend=0, thunderMode=false, specialBubbleT=300, quakeT=0;
 let nameEdit=false, nameBuf='';
+let roundSpecials={water:true,fire:true,thunder:true,extend:true};   // which special bubbles this round can float in (decided per round, like the arcade)
 function queueItem(id,now){ if(now) spawnItem(id); else if(!itemQueue.includes(id)) itemQueue.push(id); }
 function walkableSpot(){
   const spots=[]; for(let r=4;r<LH-1;r++) for(let c=3;c<LW-3;c++) if(solidAt(c,r)&&!solidAt(c,r-1)&&!solidAt(c,r-2)&&tileAt(c,r-1)==='.'&&level.grid[r][c]!=='H') spots.push([c,r]);
@@ -1721,9 +1733,9 @@ function onFoodCollected(f,p){
 function applyItem(id,p){
   const all=()=>players;
   switch(id){
-    case 'candyPink': p.candy.pink=true; S.candyPink++; banner={text:'PINK CANDY: LONG RANGE BUBBLES',t:120}; break;
-    case 'candyBlue': p.candy.blue=true; S.candyBlue++; banner={text:'BLUE CANDY: FAST BUBBLES',t:120}; break;
-    case 'candyOrange': p.candy.orange=true; S.candyOrange++; banner={text:'ORANGE CANDY: RAPID FIRE',t:120}; break;
+    case 'candyPink': p.candy.pink=true; p.candyDeaths=0; S.candyPink++; banner={text:'PINK CANDY: LONG RANGE BUBBLES',t:120}; break;
+    case 'candyBlue': p.candy.blue=true; p.candyDeaths=0; S.candyBlue++; banner={text:'BLUE CANDY: FAST BUBBLES',t:120}; break;
+    case 'candyOrange': p.candy.orange=true; p.candyDeaths=0; S.candyOrange++; banner={text:'ORANGE CANDY: RAPID FIRE',t:120}; break;
     case 'shoes': p.shoes=true; banner={text:'SHOES: SPEED UP',t:120}; break;
     case 'clock': freezeT=480; S.clocks++; banner={text:'TIME STOPS!',t:90}; break;
     case 'dynamite': killAll('explosion'); break;
@@ -1740,7 +1752,7 @@ function applyItem(id,p){
     case 'ringAmethyst': p.rings.amethyst=true; banner={text:'AMETHYST RING: 500 PTS A JUMP',t:120}; break;
     case 'ringRuby': p.rings.ruby=true; banner={text:'RUBY RING: 100 PTS A BUBBLE',t:120}; break;
     case 'crossWater': S.crossWater++; killAll('flood'); break;
-    case 'crossThunder': S.crossThunder++; killAll('lightning'); break;
+    case 'crossThunder': S.crossThunder++; thunderStorm(); break;
     case 'crossFire': p.fireballs=16; banner={text:'FIRE BREATH!',t:90}; break;
     case 'lampBlue': p.stageRings=true; banner={text:'BLUE LAMP: ALL RINGS THIS ROUND',t:120}; break;
     case 'lampRed': p.stageRings=true; p.stageCandies=true; banner={text:'RED LAMP: RINGS AND CANDIES THIS ROUND',t:120}; break;
@@ -1786,6 +1798,12 @@ function killAll(kind){
   for(const b of bubbles) if(b.enemy) killQueue.push({e:b.enemy,kind,bubble:b});
   SFX.escape();
 }
+// Cross of Thunder: lightning bolts fly horizontally across the level, a couple of rows apart, from alternating sides,
+// through walls, and take out everything they cross (monsters in bubbles and bosses too)
+function thunderStorm(){
+  fx.push({kind:'lightning',t:0,max:90}); SFX.escape(); banner={text:'THUNDER!',t:90};
+  let i=0; for(let r=4;r<LH-1;r+=2,i++){ const dir=(i%2)?-1:1; bolts.push({x:dir>0?2*TILE:LW*TILE-2*TILE,y:r*TILE+4,vx:dir*7,life:Math.ceil(LW*TILE/7)+8,delay:i*2,storm:true,kind:'thunder',popper:null}); }
+}
 function killWith(e,kind,popper,chain){
   if(e.state!=='alive') return;
   if(e.boss){ e.hit({x:e.x,y:e.y-8,r:8}); return; }
@@ -1815,7 +1833,9 @@ function startSecretRoom(){
 const SPECIAL_BUBBLE_COLORS={water:[80,160,255],fire:[255,120,40],thunder:[255,230,60],extend:[200,120,255]};
 const LETTERS=[['E1','E','#ff4040'],['X','X','#ffe040'],['T','T','#40e0ff'],['E2','E','#40e040'],['N','N','#ff80c0'],['D','D','#c0c0ff']];
 function spawnSpecialBubble(kind,fromTop){
-  if(!kind){ if(Math.random()<1/4096){ spawnItem('specialBubble'); return; } const r=Math.random(); kind= r<0.3?'water' : r<0.55?'fire' : r<0.8?'thunder' : 'extend'; }
+  if(!kind){ if(Math.random()<1/4096){ spawnItem('specialBubble'); return; }
+    const pool=[]; if(roundSpecials.water) pool.push('water','water'); if(roundSpecials.fire) pool.push('fire'); if(roundSpecials.thunder) pool.push('thunder'); if(roundSpecials.extend) pool.push('extend','extend');
+    if(!pool.length) return; kind=pool[Math.floor(Math.random()*pool.length)]; }
   const cols=[]; for(let c=3;c<LW-3;c++) if(tileAt(c,LH-2)==='.'||tileAt(c,LH-2)==='w') cols.push(c);
   const c=cols.length? cols[Math.floor(Math.random()*cols.length)] : Math.floor(LW/2);
   const b={x:c*TILE+4,y: fromTop? rnd(4*TILE,LH*TILE-4*TILE) : (LH-2)*TILE+4,r:BUB_R,vx:0,vy:-0.25,phase:'float',age:0,owner:null,enemy:null,trapT:0,popping:false,popDelay:0,popper:null,chain:null,seed:Math.random()*100,atTop:false,squash:0,slideDir:0,blockedUp:false,special:kind};
@@ -1826,7 +1846,7 @@ function popSpecial(b,p){
   const i=bubbles.indexOf(b); if(i>=0) bubbles.splice(i,1);
   const col=SPECIAL_BUBBLE_COLORS[b.special]; spawnPopParticles(b,`rgb(${col[0]},${col[1]},${col[2]})`); SFX.pop(3);
   const away=-(p?p.facing:1)||1;
-  if(b.special==='water'){ S.waterPopped++; floods.push({x:b.x,y:b.y+4,w:12,h:8,vx:away*1.6,vy:0,life:420,onGround:false,hitWall:false,popper:p}); }
+  if(b.special==='water'){ S.waterPopped++; for(let i=0;i<7;i++) floods.push({x:b.x,y:b.y+4,w:12,h:8,vx:away*1.7,vy:0,life:900,delay:i*4,lead:i===0,onGround:false,hitWall:false,popper:p}); }
   else if(b.special==='fire'){ S.firePopped++; const c0=col_(b.x); let r=row(b.y); while(r<LH-1&&!solidAt(c0,r)) r++;
     for(let dc=-4;dc<=4;dc++){ const c=c0+dc; if(c<2||c>LW-3) continue; if(solidAt(c,r)&&!solidAt(c,r-1)) flames.push({c,r:r-1,life:220+Math.abs(dc)*8,popper:p}); } }
   else if(b.special==='thunder'){ S.thunderPopped++; bolts.push({x:b.x,y:b.y,vx:away*5,life:70,popper:p,kind:'thunder'}); }
@@ -1848,14 +1868,17 @@ function updateItemSystems(){
   // staggered kill-all
   if(killQueue.length && frameCount%5===0){ const k=killQueue.shift(); if(k.e.state==='alive'){ killQueue.chain=killQueue.chain||{count:0,kills:0}; killWith(k.e,k.kind,null,killQueue.chain); } if(!killQueue.length) killQueue.chain=null; }
   // floods: a wave that runs along the floor away from the popper, falls off ledges, bounces off walls
-  for(const f of floods){ f.life--; f.hitWall=false; physicsStep(f); if(f.hitWall) f.vx=-f.vx;
-    if(frameCount%2===0) particles.push({type:'dot',x:f.x+rnd(-6,6),y:f.y-rnd(0,8),vx:-f.vx*0.3,vy:rnd(-0.8,0),life:14,max:14,color:'#80c8ff'});
-    for(const e of enemies) if(e.state==='alive'&&!e.trapped&&rectOverlap(f,e,0)) killWith(e,'water',f.popper); }
+  for(const f of floods){ if(f.delay>0){ f.delay--; continue; } f.life--; f.hitWall=false; physicsStep(f);
+    if(f.hitWall){ if(f.onGround && row(f.y)>=LH-2){ f.life=0; for(let i=0;i<10;i++) particles.push({type:'dot',x:f.x+rnd(-8,8),y:f.y-rnd(0,10),vx:rnd(-1,1),vy:rnd(-2,-0.5),life:24,max:24,color:'#a0d8ff'}); } else f.vx=-f.vx; }   // the bottom of the level: the water drains away
+    if(f.wrapped){ f.life=0; }
+    if(f.lead && frameCount%2===0) particles.push({type:'dot',x:f.x+rnd(-6,6),y:f.y-rnd(0,8),vx:-f.vx*0.3,vy:rnd(-0.8,0),life:14,max:14,color:'#80c8ff'});
+    for(const e of enemies) if(e.state==='alive'&&rectOverlap(f,e,0)) killWith(e,'water',f.popper);
+    if(f.lead) for(const q of players){ if(q.state==='alive'&&!q.riding&&!(q.rideCd>0)&&rectOverlap(f,q,-2)) { q.riding=f; SFX.bounce(); } } }
   floods=floods.filter(f=>f.life>0);
   for(const fl of flames){ fl.life--; for(const e of enemies){ if(e.state!=='alive'||e.trapped) continue; if(col_(e.x)===fl.c && row(e.y-1)===fl.r) killWith(e,'fire',fl.popper); } }
   flames=flames.filter(f=>f.life>0);
-  for(const bt of bolts){ bt.life--; bt.x+=bt.vx; if(solidAt(col_(bt.x),row(bt.y))) bt.life=0;
-    for(const e of enemies){ if(e.state!=='alive'||e.trapped) continue; if(Math.abs(e.x-bt.x)<10 && Math.abs((e.y-8)-bt.y)<12) killWith(e,'thunder',bt.popper); } }
+  for(const bt of bolts){ if(bt.delay>0){ bt.delay--; continue; } bt.life--; bt.x+=bt.vx; if(!bt.storm && solidAt(col_(bt.x),row(bt.y))) bt.life=0;
+    for(const e of enemies){ if(e.state!=='alive'||(e.trapped&&!bt.storm)) continue; if(Math.abs(e.x-bt.x)<Math.abs(bt.vx)+6 && Math.abs((e.y-8)-bt.y)<12){ if(bt.storm) killWith(e,'storm',null,stormChain); else killWith(e,'thunder',bt.popper); } } }
   bolts=bolts.filter(b=>b.life>0);
   for(const fb of fireballs){ fb.life--; fb.x+=fb.vx; if(solidAt(col_(fb.x),row(fb.y))) fb.life=0;
     for(const e of enemies){ if(e.state!=='alive'||e.trapped) continue; if(Math.abs(e.x-fb.x)<10 && Math.abs((e.y-8)-fb.y)<12){ killWith(e,'fireball',fb.owner,{count:0,kills:0}); fb.life=0; } } }
@@ -1886,9 +1909,10 @@ function drawItems(){
   }
 }
 function drawEffectsWorld(){
-  for(const f of floods){ ctx.fillStyle='rgba(70,150,255,0.75)'; ctx.beginPath(); ctx.ellipse(f.x,f.y-4,8,5,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle='rgba(220,245,255,0.9)'; ctx.fillRect(Math.round(f.x-5),Math.round(f.y-8+((frameCount>>2)&1)),10,1); }
+  for(const f of floods){ if(f.delay>0) continue; ctx.fillStyle='rgba(70,150,255,0.7)'; ctx.beginPath(); ctx.ellipse(f.x,f.y-3,8,f.lead?5:3.5,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle='rgba(220,245,255,0.9)'; ctx.fillRect(Math.round(f.x-5),Math.round(f.y-(f.lead?8:6)+((frameCount>>2)&1)),10,1); if(f.lead){ ctx.fillStyle='#ffffff'; ctx.fillRect(Math.round(f.x+sgn(f.vx)*6),Math.round(f.y-9),2,2); } }
   for(const fl of flames){ const x=fl.c*TILE, y=(fl.r+1)*TILE; for(let k=0;k<3;k++){ const h=3+Math.round(Math.abs(Math.sin(frameCount*0.25+fl.c*1.7+k*2))*6); ctx.fillStyle=k===1?'#ffd030':'#ff6a10'; ctx.fillRect(x+k*3,y-h,2,h); ctx.fillStyle='#fff0a0'; ctx.fillRect(x+k*3,y-h,2,1); } }
-  for(const bt of bolts){ ctx.strokeStyle=(frameCount&2)?'#ffffff':'#ffe040'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(bt.x-bt.vx*4,bt.y); for(let i=0;i<5;i++) ctx.lineTo(bt.x-bt.vx*4+bt.vx*i*1.6,bt.y+((i&1)?-4:4)); ctx.lineTo(bt.x+bt.vx*2,bt.y); ctx.stroke(); }
+  for(const bt of bolts){ if(bt.delay>0) continue; const L=bt.storm?8:4; ctx.strokeStyle=(frameCount&2)?'#ffffff':'#ffe040'; ctx.lineWidth=bt.storm?3:2; ctx.beginPath(); ctx.moveTo(bt.x-bt.vx*L,bt.y); for(let i=0;i<2*L;i++) ctx.lineTo(bt.x-bt.vx*L+bt.vx*i*0.5,bt.y+((i&1)?-4:4)); ctx.lineTo(bt.x+bt.vx,bt.y); ctx.stroke();
+    if(bt.storm){ ctx.fillStyle='rgba(255,240,120,0.25)'; ctx.fillRect(bt.x-bt.vx*L,bt.y-6,bt.vx*L,12); } }
   for(const fb of fireballs){ const img=frame('fx_fire',(frameCount>>2)%3,fb.dir); if(img) ctx.drawImage(img,Math.round(fb.x-8),Math.round(fb.y-8)); else { ctx.fillStyle='#ff8020'; ctx.beginPath(); ctx.arc(fb.x,fb.y,5,0,Math.PI*2); ctx.fill(); } }
   for(const eb of energyBalls){ ctx.fillStyle='rgba(255,128,192,0.4)'; ctx.beginPath(); ctx.arc(eb.x,eb.y,9,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#ff80c0'; ctx.beginPath(); ctx.arc(eb.x,eb.y,5,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#ffffff'; ctx.beginPath(); ctx.arc(eb.x-1.5,eb.y-1.5,2,0,Math.PI*2); ctx.fill(); }
 }
@@ -1898,7 +1922,7 @@ function drawEffectsScreen(){
   for(const x of fx){ const k=x.t/x.max;
     if(x.kind==='explosion'){ if(x.t<8){ ctx.fillStyle='rgba(255,255,255,'+(1-x.t/8)+')'; ctx.fillRect(0,16,W,H-16); } ctx.strokeStyle='#ff8020'; ctx.lineWidth=3; ctx.globalAlpha=1-k; ctx.beginPath(); ctx.arc(W/2,H/2,k*220,0,Math.PI*2); ctx.stroke(); ctx.globalAlpha=1; }
     else if(x.kind==='flood'){ const h=Math.sin(k*Math.PI)*(H-16); ctx.fillStyle='rgba(60,140,255,0.55)'; ctx.fillRect(0,H-h,W,h); ctx.fillStyle='rgba(230,250,255,0.9)'; for(let xx=0;xx<W;xx+=8) ctx.fillRect(xx,H-h+Math.sin(xx*0.3+x.t*0.3)*2,4,2); }
-    else if(x.kind==='lightning'){ if(x.t<40){ ctx.fillStyle='rgba(255,255,255,'+(x.t%4<2?0.5:0.1)+')'; ctx.fillRect(0,16,W,H-16); ctx.strokeStyle='#ffe040'; ctx.lineWidth=4; ctx.beginPath(); let px=W/2, py=16; ctx.moveTo(px,py); for(let i=0;i<8;i++){ px+=rnd(-30,30); py+=(H-16)/8; ctx.lineTo(px,py); } ctx.stroke(); } }
+    else if(x.kind==='lightning'){ if(x.t<6||(x.t%17<2)){ ctx.fillStyle='rgba(255,255,255,'+(x.t<6?0.6:0.25)+')'; ctx.fillRect(0,16,W,H-16); } }
     else if(x.kind==='holy'){ ctx.fillStyle='rgba(160,80,255,'+(0.25*(1-k))+')'; ctx.fillRect(0,16,W,H-16); }
     else if(x.kind==='quake'){ ctx.fillStyle='rgba(120,90,60,'+(0.2*(1-k))+')'; ctx.fillRect(0,16,W,H-16); }
     else if(x.kind==='stars'){ ctx.fillStyle='rgba(255,255,220,'+(0.12*(1-k))+')'; ctx.fillRect(0,16,W,H-16); }
@@ -1923,7 +1947,7 @@ function clearSave(n){ try{ localStorage.removeItem(saveKey(n)); }catch(e){} }
 function saveGame(){
   if(!S||!players.length||level.def.bonus||pendingSecret) return;
   const data={v:1,round,numPlayers,hiScore,thunderMode,itemQueue,S,stats,when:Date.now(),
-    players:players.map(p=>({score:p.score,lives:p.lives,candy:p.candy,shoes:p.shoes,rings:p.rings,fireballs:p.fireballs,fireballRounds:p.fireballRounds,extend:p.extend}))};
+    players:players.map(p=>({score:p.score,lives:p.lives,candy:p.candy,candyDeaths:p.candyDeaths||0,shoes:p.shoes,rings:p.rings,fireballs:p.fireballs,fireballRounds:p.fireballRounds,extend:p.extend}))};
   try{ localStorage.setItem(saveKey(numPlayers),JSON.stringify(data)); addPopup(player.x,player.y-24,'SAVED','#80ff80'); }catch(e){}
 }
 function continueGame(){
@@ -1932,7 +1956,7 @@ function continueGame(){
   round=clamp(d.round||1,1,LEVEL_DEFS.length); stats=Object.assign({blown:0,popped:0,bounces:0,biggestChain:0},d.stats||{});
   S=Object.assign(newS(),d.S||{}); hiScore=Math.max(hiScore,d.hiScore||0); thunderMode=!!d.thunderMode; itemQueue=(d.itemQueue||[]).slice();
   pendingSecret=false; nextExtend=0; bellArmed=false; crystalBallT=0; roundEndItem=null;
-  players.forEach((p,i)=>{ const q=(d.players||[])[i]; if(!q) return; p.score=q.score||0; p.lives=q.lives||3; p.candy=q.candy||{}; p.shoes=!!q.shoes; p.rings=q.rings||{}; p.fireballs=q.fireballs||0; p.fireballRounds=q.fireballRounds||0; p.extend=q.extend||{}; });
+  players.forEach((p,i)=>{ const q=(d.players||[])[i]; if(!q) return; p.score=q.score||0; p.lives=q.lives||3; p.candy=q.candy||{}; p.candyDeaths=q.candyDeaths||0; p.shoes=!!q.shoes; p.rings=q.rings||{}; p.fireballs=q.fireballs||0; p.fireballRounds=q.fireballRounds||0; p.extend=q.extend||{}; });
   roundsThisGame=1; startRound(); state='playing'; paused=false; banner={text:'CONTINUE  ROUND '+round,t:150}; SFX.clear(); return true;
 }
 function quitToTitle(){ if(state!=='playing'&&state!=='clear') return; if(roundsThisGame>=2||!loadSave(numPlayers)) saveGame(); state='title'; banner=null; paused=false; bubbles=[]; enemies=[]; fruits=[]; items=[]; particles=[]; popups=[]; shots=[]; level=makeLevel(defOf(0)); LW=level.cols; LH=level.rows; buildLevel(); }
@@ -1958,6 +1982,9 @@ function startRound(customDef){
   items=[]; fx=[]; floods=[]; flames=[]; bolts=[]; fireballs=[]; energyBalls=[]; skyfall=null; killQueue=[]; freezeT=0; heartT=0; roundT=0; hurried=false; quakeT=0; itemTimer=150; specialBubbleT=360; combo=0; comboFrame=-999; bigDropped=false;
   for(const p of players){ p.stageRings=false; p.stageCandies=false; if(!customDef && p.fireballRounds>0) p.fireballRounds--; }
   if(!customDef){ S.crownPrev=S.crownThis; S.crownThis=false; P.levelsBegun++; if(crystalBallT>0) crystalBallT--; saveP(); }
+  { const R=rng(round*7919+13); const any=R()<0.7;   // 7 rounds in 10 have special bubbles; each of those gets one or two kinds
+    const kinds=['water','fire','thunder'].filter(()=>R()<0.45); if(any && !kinds.length) kinds.push(['water','fire','thunder'][ri(R,0,2)]);
+    roundSpecials={water:any&&kinds.includes('water'),fire:any&&kinds.includes('fire'),thunder:any&&kinds.includes('thunder'),extend:R()<0.65}; }
   if(!level.def.bonus && !customDef && round<LEVEL_DEFS.length-3 && Math.random()<0.15) queueItem(['parasolO','parasolO','parasolR','parasolP'][Math.floor(Math.random()*4)]);   // a parasol turns up now and then on its own
   if(!level.def.bonus){ checkConditions(true);
     if(nextExtend>0){ for(let i=0;i<nextExtend;i++) spawnSpecialBubble('extend',true); nextExtend=0; }
