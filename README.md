@@ -1,6 +1,6 @@
-# Bubble Bobble prototype
+# Bubble Bobble Odyssey
 
-A browser prototype inspired by Taito's 1986 arcade game Bubble Bobble: blow bubbles, trap enemies, bounce on your bubbles,
+A browser game inspired by Taito's 1986 arcade game Bubble Bobble: blow bubbles, trap enemies, bounce on your bubbles,
 and clear 100 rounds of platforms, shafts, caves, labyrinths, waterfalls, forests, cities, space, fire and ice.
 
 **Play:** open `index.html` in a browser (or the GitHub Pages site).
@@ -8,8 +8,9 @@ and clear 100 rounds of platforms, shafts, caves, labyrinths, waterfalls, forest
 ## Controls
 
 One player: A/D move, Space (or W) jump, hold jump to bounce on bubbles, S+Space drop through a platform, E blow a bubble.
-F toggles autofire, M mutes, P pauses. On the title screen W/S picks a starting level, A/D switches between 1 and 2 players,
-and N lets you type a three-letter name (some secret items only appear for certain names).
+F toggles autofire, M mutes, P pauses. On the title screen A/D switches between 1 and 2 players and N lets you type a
+three-letter name (some secret items only appear for certain names). Every new game starts at round 1; use the save to
+come back to a later round.
 
 Two players (co-op, both must be picked on the title screen):
 
@@ -21,7 +22,7 @@ Two players (co-op, both must be picked on the title screen):
 On a phone or tablet (iOS Safari included) on-screen controls appear automatically: a left / right / down pad on the
 left, BUBBLE and JUMP on the right, an AUTO pill (top-left) that toggles autofire, and a pill in the top-right corner that
 pauses (or switches 1P/2P on the title screen).
-Tap JUMP on the title screen to start; the arrows pick the starting level there. Press T on a keyboard to show or hide
+Tap JUMP on the title screen to start (left/right switch 1P/2P there). Press T on a keyboard to show or hide
 the overlay. Adding the page to the iOS home screen runs it full screen.
 
 Gamepads (standard mapping) also work: stick or d-pad moves, A jumps, X (or B/Y/bumper/trigger) blows a bubble, Start pauses.

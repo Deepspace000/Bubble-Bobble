@@ -7,8 +7,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="theme-color" content="#000000">
-<title>Bubble Bobble - Prototype</title>
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<title>Bubble Bobble Odyssey</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Cinzel+Decorative:wght@700&display=swap" rel="stylesheet">
 <style>
   html,body{margin:0;height:100%;background:#000;overflow:hidden}
   body{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;touch-action:none;overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
@@ -56,6 +56,7 @@ const FIRE_COOLDOWN=11;
 const INFINITE_LIVES=true;
 const BOSS_EVERY=5, BONUS_TIME=30*60;
 const FONT='"Press Start 2P", "Courier New", monospace';
+const FONT_TITLE='"Cinzel Decorative", "Georgia", serif';
 
 const DESSERTS=[
  {name:'Chocolate Pudding',value:500,pal:{W:'#fff4c0',B:'#6a3a1a',b:'#4a2610',p:'#d0d0e0'},rows:["...WW...","..WWWW..",".BBBBBB.","BBBBBBBB","BBBBBBBB","bBBBBBBb",".bbbbbb.","..pppp.."]},
@@ -905,7 +906,7 @@ function readInput(pl){
   return inp;
 }
 let autofire=false; try{ autofire=localStorage.getItem('bb_autofire')==='1'; }catch(e){}
-let selLevel=0; try{ selLevel=clamp(parseInt(localStorage.getItem('bb_level')||'0',10)||0,0,LEVEL_DEFS.length-1); }catch(e){}
+const selLevel=0;   // every new game starts at round 1 (the save system is the only way back to a later round)
 const anyDown=l=>l.some(c=>keys[c]); const anyPressed=l=>l.some(c=>pressed[c]);
 window.addEventListener('keydown',e=>{
   if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight'].includes(e.code)) e.preventDefault();
@@ -919,8 +920,6 @@ window.addEventListener('keydown',e=>{
   if(e.code==='KeyT') setTouch(!touchOn);
   if(e.code==='KeyF'){ autofire=!autofire; try{ localStorage.setItem('bb_autofire',autofire?'1':'0'); }catch(err){} }
   if(e.code==='KeyP' && state==='playing') paused=!paused;
-  if(state==='title' && (e.code==='KeyW'||e.code==='ArrowUp'||e.code==='KeyS'||e.code==='ArrowDown')){
-    const N=LEVEL_DEFS.length; selLevel=(selLevel+((e.code==='KeyW'||e.code==='ArrowUp')?-1:1)+N)%N; try{ localStorage.setItem('bb_level',String(selLevel)); }catch(err){} }
   if(state==='title' && (e.code==='KeyA'||e.code==='ArrowLeft'||e.code==='KeyD'||e.code==='ArrowRight'||e.code==='Digit1'||e.code==='Digit2')){
     numPlayers= e.code==='Digit1'?1 : e.code==='Digit2'?2 : (numPlayers===1?2:1); try{ localStorage.setItem('bb_players',String(numPlayers)); }catch(err){} }
   if(e.code==='Enter' && (state==='title'||state==='gameover')) startGame(selLevel+1);
@@ -1651,7 +1650,7 @@ function newS(){ return {blown:0,popped:0,jumps:0,walked:0,thunderPopped:0,fireP
 const ITEM_CONDS=[
  {id:'candyPink',count:()=>S.blown,every:35},{id:'candyBlue',count:()=>S.popped,every:35},{id:'candyOrange',count:()=>S.jumps,every:35},{id:'shoes',count:()=>S.walked,every:3840},
  {id:'clock',count:()=>S.thunderPopped,every:12},{id:'dynamite',count:()=>S.firePopped,every:13},
- {id:'parasolO',at:()=>S.waterPopped>=15},{id:'parasolR',at:()=>S.waterPopped>=20},{id:'parasolP',at:()=>S.waterPopped>=25},
+ {id:'parasolO',count:()=>S.waterPopped,every:6},{id:'parasolR',count:()=>S.waterPopped,every:10},{id:'parasolP',count:()=>S.waterPopped,every:15},
  {id:'holyO',at:()=>S.falls>=15},{id:'holyR',at:()=>S.falls>=16},{id:'holyG',at:()=>S.falls>=17},{id:'holyY',at:()=>S.falls>=18},{id:'holyP',at:()=>S.falls>=19},
  {id:'heart',count:()=>S.drops,every:55},{id:'ringCrystal',count:()=>S.candyBlue,every:3},{id:'ringAmethyst',count:()=>S.candyOrange,every:3},{id:'ringRuby',count:()=>S.candyPink,every:3},
  {id:'crossWater',count:()=>S.specials,every:11},{id:'crossThunder',count:()=>S.foods,every:12},{id:'crossFire',count:()=>S.waterKills,every:5},
@@ -1936,7 +1935,7 @@ function continueGame(){
   players.forEach((p,i)=>{ const q=(d.players||[])[i]; if(!q) return; p.score=q.score||0; p.lives=q.lives||3; p.candy=q.candy||{}; p.shoes=!!q.shoes; p.rings=q.rings||{}; p.fireballs=q.fireballs||0; p.fireballRounds=q.fireballRounds||0; p.extend=q.extend||{}; });
   roundsThisGame=1; startRound(); state='playing'; paused=false; banner={text:'CONTINUE  ROUND '+round,t:150}; SFX.clear(); return true;
 }
-function quitToTitle(){ if(state!=='playing'&&state!=='clear') return; saveGame(); state='title'; paused=false; bubbles=[]; enemies=[]; fruits=[]; items=[]; particles=[]; popups=[]; shots=[]; level=makeLevel(defOf(0)); LW=level.cols; LH=level.rows; buildLevel(); }
+function quitToTitle(){ if(state!=='playing'&&state!=='clear') return; if(roundsThisGame>=2||!loadSave(numPlayers)) saveGame(); state='title'; banner=null; paused=false; bubbles=[]; enemies=[]; fruits=[]; items=[]; particles=[]; popups=[]; shots=[]; level=makeLevel(defOf(0)); LW=level.cols; LH=level.rows; buildLevel(); }
 function startGame(startAt=1){ roundsThisGame=0;
   players=[new Player(0)]; if(numPlayers===2) players.push(new Player(1)); player=players[0]; round=startAt; stats={blown:0,popped:0,bounces:0,biggestChain:0};
   S=newS(); P.gamesBegun++; P.p1Joins++; if(numPlayers===2) P.p2Joins++; saveP(); itemQueue=[]; thunderMode=false; pendingSecret=false; nextExtend=0; bellArmed=false; crystalBallT=0; roundEndItem=null;
@@ -1959,6 +1958,7 @@ function startRound(customDef){
   items=[]; fx=[]; floods=[]; flames=[]; bolts=[]; fireballs=[]; energyBalls=[]; skyfall=null; killQueue=[]; freezeT=0; heartT=0; roundT=0; hurried=false; quakeT=0; itemTimer=150; specialBubbleT=360; combo=0; comboFrame=-999; bigDropped=false;
   for(const p of players){ p.stageRings=false; p.stageCandies=false; if(!customDef && p.fireballRounds>0) p.fireballRounds--; }
   if(!customDef){ S.crownPrev=S.crownThis; S.crownThis=false; P.levelsBegun++; if(crystalBallT>0) crystalBallT--; saveP(); }
+  if(!level.def.bonus && !customDef && round<LEVEL_DEFS.length-3 && Math.random()<0.15) queueItem(['parasolO','parasolO','parasolR','parasolP'][Math.floor(Math.random()*4)]);   // a parasol turns up now and then on its own
   if(!level.def.bonus){ checkConditions(true);
     if(nextExtend>0){ for(let i=0;i<nextExtend;i++) spawnSpecialBubble('extend',true); nextExtend=0; }
     if(bellArmed && itemQueue.some(id=>KILL_ALL.has(id))){ bellArmed=false; banner={text:'THE BELL TOLLS...',t:150}; SFX.clear(); } }
@@ -1979,15 +1979,14 @@ function endBonus(){
 function update(){
   frameCount++;
   pollPads(); pollTouch();
-  if(touchOn && touchState){ const t=touchState, N=LEVEL_DEFS.length;
-    if(state==='title'){ if(t.leftP||t.rightP){ selLevel=(selLevel+(t.leftP?-1:1)+N)%N; try{ localStorage.setItem('bb_level',String(selLevel)); }catch(e){} }
-      if(t.downP){ selLevel=(selLevel+1)%N; try{ localStorage.setItem('bb_level',String(selLevel)); }catch(e){} }
-      if(t.pauseP){ numPlayers=numPlayers===1?2:1; try{ localStorage.setItem('bb_players',String(numPlayers)); }catch(e){} }
+  if(touchOn && touchState){ const t=touchState;
+    if(state==='title'){
+      if(t.leftP||t.rightP||t.pauseP){ numPlayers=numPlayers===1?2:1; try{ localStorage.setItem('bb_players',String(numPlayers)); }catch(e){} }
       if(t.jumpP||t.fireP){ initAudio(); startGame(selLevel+1); } }
     else if(state==='gameover' && (t.jumpP||t.pauseP)) startGame(selLevel+1);
     else if(state==='playing' && t.pauseP) paused=!paused; }
   { const g=padState[0]||padState[1]; if(g){
-      if(state==='title'){ const N=LEVEL_DEFS.length; if(g.upP||g.downP){ selLevel=(selLevel+(g.upP?-1:1)+N)%N; try{ localStorage.setItem('bb_level',String(selLevel)); }catch(e){} }
+      if(state==='title'){
         if(g.leftP||g.rightP){ numPlayers=numPlayers===1?2:1; try{ localStorage.setItem('bb_players',String(numPlayers)); }catch(e){} }
         if(g.fireP && loadSave(numPlayers)){ initAudio(); continueGame(); }
         else if(g.startP||g.jumpP){ initAudio(); startGame(selLevel+1); } }
@@ -2053,7 +2052,7 @@ function drawAmbient(){
 
 // ===================== rendering =====================
 const texts=[]; // drawn on the display canvas at 3x (crisp web font)
-function text(str,x,y,color,size=8,align='left'){ texts.push({str,x,y,color,size,align}); }
+function text(str,x,y,color,size=8,align='left',font=FONT){ texts.push({str,x,y,color,size,align,font}); }
 const OUTLINE_COLORS=['#f8f8f8','#f8e030','#60e0ff','#ff80c0','#ff5050'];
 function drawBubble(b){
   const wob=Math.sin(b.age*0.12+b.seed)*0.05;
@@ -2238,20 +2237,19 @@ function render(){
   if(state==='gameover'){ text('GAME OVER',128,104,'#ff4040',8,'center'); text('PRESS ENTER',128,122,'#ffffff',6,'center'); }
   if(state==='title'){
     ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(16,16,W-32,H-32);
-    text('BUBBLE BOBBLE',128,34,'#f8e030',12,'center');
-    text('PROTOTYPE',128,48,'#ff80c0',6,'center');
+    text('BUBBLE BOBBLE',128,32,'#f8e030',12,'center');
+    text('Odyssey',128,49,'#ff80c0',11,'center',FONT_TITLE);
     text('NAME '+(nameEdit? (nameBuf+(((frameCount>>4)&1)?'_':' ')).padEnd(3,' ') : P.name)+'  N',236,56,nameEdit?'#40ff40':'#a0a0a0',5,'right');
     const b=frame('bub_walk',0,1); if(b) ctx.drawImage(b,26,64,24,24);
     const z=frame('zen_walk',0,-1); if(z) ctx.drawImage(z,206,64,24,24);
-    text('SELECT LEVEL  W / S',128,62,'#a0a0a0',5,'center');
-    { const sv=loadSave(numPlayers); if(sv) text(((frameCount>>4)&1?'> ':'  ')+'C CONTINUE RD '+sv.round+(numPlayers===2?' (2P)':''),20,56,'#80ff80',5,'left'); else text('NO '+numPlayers+'P SAVE',20,56,'#606060',5,'left'); }
-    const N=LEVEL_INFO.length, show=8, first=clamp(selLevel-3,0,Math.max(0,N-show));
-    for(let k=0;k<show && first+k<N;k++){ const i=first+k, y=76+k*12, sel=i===selLevel;
-      if(sel){ ctx.fillStyle='rgba(255,255,255,0.14)'; ctx.fillRect(52,y-6,152,12); }
-      text(String(i+1).padStart(2,'0')+'  '+LEVEL_INFO[i].name,56,y,sel?'#40ff40':(LEVEL_INFO[i].bonus?'#f8e030':'#ffffff'),6,'left');
-      text(LEVEL_INFO[i].size,200,y,sel?'#40ff40':(LEVEL_INFO[i].bonus?'#f8e030':'#808080'),5,'right'); }
     const b2=frame('bob_walk',0,1); if(b2 && numPlayers===2) ctx.drawImage(b2,50,64,24,24);
-    text((numPlayers===1?'< 1 PLAYER >':'< 2 PLAYERS >')+'   A/D',128,168,'#f8e030',5,'center');
+    ctx.fillStyle='rgba(255,255,255,0.10)'; ctx.fillRect(56,90,144,52);
+    text((numPlayers===1?'< 1 PLAYER >':'< 2 PLAYERS >'),128,100,'#f8e030',7,'center');
+    text(touchOn?'LEFT / RIGHT TO CHANGE':'A / D TO CHANGE',128,110,'#808080',4,'center');
+    { const sv=loadSave(numPlayers);
+      if(sv){ text('CONTINUE FROM ROUND '+sv.round,128,122,'#80ff80',6,'center'); text(touchOn?'TAP CONTINUE':'PRESS C',128,132,'#80ff80',5,'center'); }
+      else { text('NO SAVED '+numPlayers+'P GAME',128,122,'#606060',5,'center'); text('CHECKPOINTS EVERY ROUND',128,132,'#606060',4,'center'); } }
+    if((frameCount>>4)&1) text(touchOn?'TAP JUMP: NEW GAME':'ENTER: NEW GAME',128,152,'#40ff40',7,'center');
     if(numPlayers===1){
       text('A/D MOVE   SPACE JUMP   S+SPACE DROP',128,176,'#ffffff',5,'center');
       text('HOLD JUMP TO BOUNCE ON BUBBLES',128,186,'#a0a0a0',5,'center');
@@ -2261,14 +2259,14 @@ function render(){
       text('BOB: ARROWS  UP JUMP  R-CTRL OR / BUBBLE',128,186,'#60a0ff',5,'center');
       text('GAMEPAD: A JUMP  X BUBBLE   1ST PAD IS BOB',128,196,'#a0a0a0',5,'center');
     }
-    if((frameCount>>4)&1) text(touchOn?'TAP JUMP TO START':'PRESS ENTER',128,208,'#40ff40',7,'center');
+    text('ESC SAVES AND QUITS   DEL CLEARS THE SAVE',128,208,'#606060',4,'center');
     if(!ready) text('LOADING...',128,120,'#ffffff',6,'center');
   }
   sctx.imageSmoothingEnabled=false;
   sctx.clearRect(0,0,screen.width,screen.height);
   sctx.drawImage(off,0,0,W,H,0,0,W*SCALE,H*SCALE);
   for(const t of texts){
-    sctx.font=`${t.size*SCALE}px ${FONT}`; sctx.textAlign=t.align; sctx.textBaseline='middle';
+    sctx.font=`${t.font===FONT_TITLE?'bold ':''}${t.size*SCALE}px ${t.font||FONT}`; sctx.textAlign=t.align; sctx.textBaseline='middle';
     sctx.fillStyle='#000'; sctx.fillText(t.str,t.x*SCALE+SCALE,t.y*SCALE+SCALE);
     sctx.fillStyle=t.color; sctx.fillText(t.str,t.x*SCALE,t.y*SCALE);
   }
