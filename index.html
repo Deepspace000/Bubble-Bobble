@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="theme-color" content="#000000">
-<title>Bubble Bobble Adventure</title>
+<title>Bubble Bobble Adventures</title>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Bubblegum+Sans&display=swap" rel="stylesheet">
 <style>
   html,body{margin:0;height:100%;background:#000;overflow:hidden}
@@ -2104,7 +2104,7 @@ function drawAmbient(){
 
 // ===================== rendering =====================
 const texts=[]; // drawn on the display canvas at 3x (crisp web font)
-function text(str,x,y,color,size=8,align='left',font=FONT){ texts.push({str,x,y,color,size,align,font}); }
+function text(str,x,y,color,size=8,align='left',font=FONT,rainbow=false){ texts.push({str,x,y,color,size,align,font,rainbow}); }
 const OUTLINE_COLORS=['#f8f8f8','#f8e030','#60e0ff','#ff80c0','#ff5050'];
 function drawBubble(b){
   const wob=Math.sin(b.age*0.12+b.seed)*0.05;
@@ -2302,7 +2302,7 @@ function render(){
   if(state==='title'){
     ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(16,16,W-32,H-32);
     text('BUBBLE BOBBLE',128,31,'#f8e030',12,'center');
-    text('Adventure',128,44,'#ff80c0',17,'center',FONT_TITLE);
+    text('Adventures',128,44,'#ff80c0',17,'center',FONT_TITLE,true);
     text('NAME '+(nameEdit? (nameBuf+(((frameCount>>4)&1)?'_':' ')).padEnd(3,' ') : P.name)+'  N',236,56,nameEdit?'#40ff40':'#a0a0a0',5,'right');
     const b=frame('bub_walk',0,1); if(b) ctx.drawImage(b,26,64,24,24);
     const z=frame('zen_walk',0,-1); if(z) ctx.drawImage(z,206,64,24,24);
@@ -2331,6 +2331,11 @@ function render(){
   sctx.drawImage(off,0,0,W,H,0,0,W*SCALE,H*SCALE);
   for(const t of texts){
     sctx.font=`${t.size*SCALE}px ${t.font||FONT}`; sctx.textAlign=t.align; sctx.textBaseline='middle';
+    if(t.rainbow){   // one hue per letter, slowly cycling
+      const ws=[...t.str].map(ch=>sctx.measureText(ch).width), total=ws.reduce((a,b)=>a+b,0);
+      let x= t.align==='center'? t.x*SCALE-total/2 : t.align==='right'? t.x*SCALE-total : t.x*SCALE; sctx.textAlign='left';
+      [...t.str].forEach((ch,i)=>{ sctx.fillStyle='#000'; sctx.fillText(ch,x+SCALE,t.y*SCALE+SCALE); sctx.fillStyle=`hsl(${(i*36-frameCount*2)%360},95%,62%)`; sctx.fillText(ch,x,t.y*SCALE); x+=ws[i]; });
+      continue; }
     sctx.fillStyle='#000'; sctx.fillText(t.str,t.x*SCALE+SCALE,t.y*SCALE+SCALE);
     sctx.fillStyle=t.color; sctx.fillText(t.str,t.x*SCALE,t.y*SCALE);
   }
