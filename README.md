@@ -10,7 +10,8 @@ and clear 100 rounds of platforms, shafts, caves, labyrinths, waterfalls, forest
 One player: A/D move, Space (or W) jump, hold jump to bounce on bubbles, S+Space drop through a platform, E blow a bubble.
 F toggles autofire, M mutes, P pauses. On the title screen A/D switches between 1 and 2 players and N lets you type a
 three-letter name (some secret items only appear for certain names). Every new game starts at round 1; use the save to
-come back to a later round.
+come back to a later round. P or Escape (Start on a pad, the PAUSE pill on touch) opens the pause menu: Continue,
+Return to Menu (saves) or Exit Game (saves, then closes the tab where the browser allows it).
 
 Two players (co-op, both must be picked on the title screen):
 
@@ -33,8 +34,8 @@ the natural two-player setup.
 
 The game checkpoints itself at the start of every round, with one save for 1-player games and one for 2-player games.
 On the title screen pick 1 or 2 players and press C (gamepad: the bubble button, touch: the CONTINUE pill) to carry on
-from the saved round with scores, candies, shoes, rings and thunder bubbles intact. Escape during a game saves and returns
-to the title; Delete on the title clears the save for the selected player count. A new game only overwrites the old
+from the saved round with scores, candies, shoes, rings and thunder bubbles intact. Return to Menu or Exit Game in the
+pause menu save first; Delete on the title clears the save for the selected player count. A new game only overwrites the old
 save once it reaches its second round, so a stray Enter costs nothing.
 
 ## Rounds
